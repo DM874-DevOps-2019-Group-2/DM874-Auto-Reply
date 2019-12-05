@@ -4,18 +4,27 @@ import (
     "context"
     "fmt"
     "strings"
+    "strconv" 
     // "sync"
     "time"
+    "os"
+    "database/sql"
 
     "github.com/segmentio/kafka-go"
-    "os"
 )
 
 func main() {
     inTopic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
     // outTopic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
-    kafkaBrokers := "localhost:9092" //os.Getenv("KAFKA_BROKERS")
+    kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
+
+    db_host     := os.Getenv("DATABASE_HOST")
+    db_port,_ := strconv.Atoi(os.Getenv("DATABASE_PORT"))
+    db_user     := os.Getenv("DATABASE_USER")
+    db_password := os.Getenv("DATABASE_PASSWORD")
+    db_name     := os.Getenv("DATABASE_NAME")
+
 
     reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
@@ -34,30 +43,36 @@ func main() {
         Balancer: &kafka.LeastBytes{},
     })
     defer writer.Close()
+    
+    psql_info := fmt.Sprintf(
+        "host=%s port=%d user=%s "+
+        "password=%s dbname=%s sslmode=disable",
+        db_host, db_port, db_user, db_password, db_name)
 
-    // type Message struct {
-    //     // Topic is reads only and MUST NOT be set when writing messages
-    //     Topic string
+    db, err := sql.Open("postgres", psql_info)
+    if err != nil {
+        panic(err)
+    }
+    defer db.Close()
+    
+    err = db.Ping()
+    if err != nil {
+        panic(err)
+    }
 
-    //     // Partition is reads only and MUST NOT be set when writing messages
-    //     Partition int
-    //     Offset    int64
-    //     Key       []byte
-    //     Value     []byte
-    //     Headers   []Header
+    fmt.Println("Successfully connected!")
 
-    //     // If not set at the creation, Time will be automatically set when
-    //     // writing the message.
-    //     Time time.Time
-    // }
 
+
+
+    /*TEST
     writer.WriteMessages(context.Background(), kafka.Message{
         Key: []byte("Whatever"),
         Value: []byte("Hello, World!"),
     });
+    //*/
 
     for {
-        fmt.Println("Hej MOrmor");
         message, err := reader.ReadMessage(context.Background())
         if err != nil {
             fmt.Println(err)
