@@ -16,22 +16,7 @@ import (
     _ "github.com/lib/pq"
 )
 
-type Message struct {
-    destinationid int;
-    message string;
-    fromautoreply bool;
-}
 
-type Task struct {
-
-}
-
-type Event_Sourcing_Structure struct {
-    messageid string;
-    senderid int;
-    messagedestinations []Message;
-    // tasks map[string]string;
-}
 
 func main() {
 
@@ -82,30 +67,44 @@ func main() {
 
     fmt.Println("Successfully connected!")
 
-    var event_sourcing_structure Event_Sourcing_Structure
-
-    var json_event_test = []byte(`{
-  "messageid": "UID",
-  "senderid": 12,
-  "messagedestinations": [
-    {
-      "destinationid": 42,
-      "message": "Hello world!",
-      "fromautoreply": false
+    type Message struct {
+        DestinationId int `json:"destinationid"`
+        MessageText string `json:"message"`
+        FromAutoReply bool `json:"fromautoreply"`
     }
-  ]
-}`)
-  // "tasks": [
-  //   {"partition":"1", "topic":"TOPIC1"},
-  //   {"partition":"2", "topic":"TOPIC2"}
-  // ]
+
+    type EventSourcingStructure struct {
+        MessageId string `json:"messageid"`
+        SenderId int `json:"senderid"`
+        MessageDestinations []Message `json:"messagedestinations"`
+        Tasks map[string]string `json:"tasks"`
+    }
+
+    var event_sourcing_structure EventSourcingStructure
+    // var event_sourcing_structure map[string]interface{}
+
+    json_event_test := []byte(`{
+      "messageid": "UID",
+      "senderid": 12,
+      "messagedestinations": [
+        {
+          "destinationid": 42,
+          "message": "Hello world!",
+          "fromautoreply": false
+        }
+      ],
+      "tasks": {
+        "1": "TOPIC1",
+        "2": "TOPIC2"
+      }
+    }`)
 
     err = json.Unmarshal(json_event_test, &event_sourcing_structure)
     if err != nil {
         panic(err)
     }
 
-    fmt.Println(event_sourcing_structure)
+    fmt.Printf("%+v\n", event_sourcing_structure)
 
 
     /*TEST
