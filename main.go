@@ -60,13 +60,34 @@ func main() {
         panic(err)
     }
     defer db.Close()
+    fmt.Println("Successfully connected!")
     
     err = db.Ping()
     if err != nil {
         panic(err)
     }
 
-    fmt.Println("Successfully connected!")
+    statement, err := db.Prepare("SELECT * FROM auto_reply;")
+    if err != nil {
+        panic(err)
+    }
+    
+    rows, err := statement.Query()
+    if err != nil {
+        panic(err)
+    }
+
+    type Auto_Reply_Row struct {
+        user_id int64
+        reply_text string
+    }
+    
+    fmt.Println("Rows:")
+    for rows.Next() {
+        var row Auto_Reply_Row
+        rows.Scan(&row.user_id, &row.reply_text)
+        fmt.Println(row)
+    }
 
     type Message struct {
         DestinationId *int `json:"destinationid"`

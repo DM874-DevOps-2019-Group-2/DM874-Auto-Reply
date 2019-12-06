@@ -8,11 +8,11 @@ WORKDIR /home/golang/
 
 
 # COPY dependencies.txt /dependencies.txt
-COPY main.go main.go
 COPY Makefile Makefile
 COPY dependencies.txt dependencies.txt
 
 RUN cat dependencies.txt | xargs -I @ go get @
+COPY main.go main.go
 RUN make
 
 CMD ["./main"]

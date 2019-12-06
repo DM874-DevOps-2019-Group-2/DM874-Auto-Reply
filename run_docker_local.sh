@@ -2,6 +2,7 @@
 
 host_ip=172.17.0.1
 
+docker build --rm -t golang . && \
 docker run \
     -e AUTO_REPLY_CONSUMER_TOPIC=AutoReplyConsumerTopic \
     -e AUTO_REPLY_PRODUCER_TOPIC=AutoReplyProducerTopic \
@@ -11,4 +12,5 @@ docker run \
     -e DATABASE_USER=postgres \
     -e DATABASE_PASSWORD=password \
     -e DATABASE_NAME=auto_reply_db \
-    -t golang
+    -t golang \
+|| echo "Nope!"
