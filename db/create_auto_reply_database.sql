@@ -1,3 +1,4 @@
+DROP DATABASE IF EXISTS auto_reply_db;
 CREATE DATABASE auto_reply_db;
 \c auto_reply_db
 
@@ -8,7 +9,7 @@ CREATE TABLE reply (
 );
 
 CREATE TABLE user_reply_settings (
-	user_id integer PRIMARY KEY,
+	user_id integer PRIMARY KEY
 );
 
 CREATE TABLE user_reply_relation (
@@ -16,6 +17,6 @@ CREATE TABLE user_reply_relation (
 	reply_id  integer NOT NULL,
 	active boolean NOT NULL,
 	PRIMARY KEY (user_id, reply_id),
-	FOREIGN KEY (user_id, reply_id)
-		REFERENCES (user_reply_settings.user_id, reply.reply_id)
+	FOREIGN KEY (user_id) REFERENCES user_reply_settings(user_id),
+	FOREIGN KEY (reply_id) REFERENCES reply(reply_id)
 );
