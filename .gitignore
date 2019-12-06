@@ -3,3 +3,5 @@
 
 *.sublime-*
 *.test
+#Executable files:
+main

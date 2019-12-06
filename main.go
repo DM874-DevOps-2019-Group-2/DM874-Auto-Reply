@@ -11,6 +11,7 @@ import (
     "database/sql"
 
     "encoding/json"
+    "bytes"
 
     "github.com/segmentio/kafka-go"
     _ "github.com/lib/pq"
@@ -68,16 +69,16 @@ func main() {
     fmt.Println("Successfully connected!")
 
     type Message struct {
-        DestinationId int `json:"destinationid"`
-        MessageText string `json:"message"`
-        FromAutoReply bool `json:"fromautoreply"`
+        DestinationId *int `json:"destinationid"`
+        MessageText *string `json:"message"`
+        FromAutoReply *bool `json:"fromautoreply"`
     }
 
     type EventSourcingStructure struct {
-        MessageId string `json:"messageid"`
-        SenderId int `json:"senderid"`
-        MessageDestinations []Message `json:"messagedestinations"`
-        Tasks map[string]string `json:"tasks"`
+        MessageId *string `json:"messageid"`
+        SenderId *int `json:"senderid"`
+        MessageDestinations *[]Message `json:"messagedestinations"`
+        Tasks *map[string]string `json:"tasks"`
     }
 
     var event_sourcing_structure EventSourcingStructure
@@ -99,12 +100,23 @@ func main() {
       }
     }`)
 
-    err = json.Unmarshal(json_event_test, &event_sourcing_structure)
+
+    json_decoder := json.NewDecoder(bytes.NewReader(json_event_test))
+    json_decoder.DisallowUnknownFields() // Force errors
+
+    err = json_decoder.Decode(&event_sourcing_structure)
+    // err = json.Unmarshal(json_event_test, &event_sourcing_structure)
     if err != nil {
         panic(err)
     }
-
     fmt.Printf("%+v\n", event_sourcing_structure)
+    
+    encoded_event_sourcing_structure := new(bytes.Buffer)
+    json_encoder := json.NewEncoder(encoded_event_sourcing_structure)
+    json_encoder.Encode(event_sourcing_structure)
+    
+    fmt.Printf("%+v\n", encoded_event_sourcing_structure)
+
 
 
     /*TEST
