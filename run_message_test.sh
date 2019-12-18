@@ -8,5 +8,5 @@ export DATABASE_PORT=5432
 export DATABASE_USER=postgres
 export DATABASE_PASSWORD=password
 export DATABASE_NAME=auto_reply_db
- 
-go run main.go
+
+go run fake_message_provider.go
