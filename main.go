@@ -1,10 +1,11 @@
 package main
 
 import (
+    "errors"
     "context"
     "fmt"
     "strings"
-    // "strconv" 
+    //"strconv" 
     // "sync"
     "time"
     "os"
@@ -19,29 +20,50 @@ import (
     _ "github.com/lib/pq"
 )
 
+// type EventSourcingStructure struct {
+//     MessageUid string
+//     SessionUid string
+//     SendingUserId int
+//     RecipientUserIds []int
+//     FromAutoReply bool
+//     EventDestinations []string
+// }
+
 type Message struct {
-    DestinationId *int `json:"destinationId"`
-    MessageId *string `json:"messageId"`
-    MessageText *string `json:"message"`
+    DestinationId int
+    MessageId string
+    MessageText string
 }
 
 type EventSourcingStructure struct {
-    MessageId string `json:"messageId"`
-    SessionId string `json:"sessionId"`
-    SenderId int `json:"senderId"`
-    FromAutoReply bool `json:"fromAutoReply"`
-    MessageDestinations []Message `json:"messageDestinations"`
-    EventDestinations []string `json:"eventDestinations"`
+    MessageId string
+    SessionId string
+    SenderId int
+    FromAutoReply bool
+    MessageDestinations []*Message
+    EventDestinations map[string]string
 }
 
-func pop_front(slice []interface{}) interface{}, []interface{} {
-    head, tail := slice[0], slice[1:]
-    return head, tail
-}
+/*
+func pop_first_event_destination(event_destinations *map[string]string) string {
+    
+    var result string
 
+    var min_key int = int(uint((~0)>>1))
+    var min_key_str string
 
-func new_event_sourcing_struct() *EventSourcingStructure {
-    result := new(EventSourcingStructure)
+    for key_string, _ := range *event_destinations {
+        key := strconv.Atoi(key_string)
+        
+        if key < min_key {
+            min_key := key
+            min_key_str = min_key_str
+        }
+    }
+
+    result = (*event_destinations)[min_key_str]
+    delete(*event_destinations, min_key_str);
+    return result
 }
 
 func handle_event(event_struct EventSourcingStructure, db *sql.DB) []*EventSourcingStructure {
@@ -62,14 +84,14 @@ func handle_event(event_struct EventSourcingStructure, db *sql.DB) []*EventSourc
 
         rows, err := db.Query(query_string, receiver_id)
         if err != nil {
-            fmt.Errorf("[ERROR]: %v\n", err)
+            fmt.Printf("[ERROR]: %v\n", err) // :ERROR
             fmt.Printf("EventSourcingStructure: %+v\n", event_struct)
         }
 
         fmt.Println("rows: ", rows)
 
         if rows == nil {
-            fmt.Errorf("[ERROR]: No user by ID %d.\n", receiver_id)
+            fmt.Printf("[ERROR]: No user by ID %d.\n", receiver_id) // :ERROR
             return
         }
         defer rows.Close()
@@ -95,53 +117,77 @@ func handle_event(event_struct EventSourcingStructure, db *sql.DB) []*EventSourc
     
     // result, err := statement.Query(sender)   
 }
+*/
 
-func parse_event_sourcing_structure(json_bytes []byte) EventSourcingStructure {
+func parse_event_sourcing_structure(json_bytes []byte) (*EventSourcingStructure, error) {
+    var result *EventSourcingStructure = nil
+    var err error
 
-    type EventSourcingStructureLocal struct {
+    type ParseMessage struct {
+        DestinationId *int `json:"destinationId"`
+        MessageId *string `json:"messageId"`
+        MessageText *string `json:"message"`
+    }
+
+    type ParseEventSourceStruct struct {
         MessageId *string `json:"messageId"`
         SessionId *string `json:"sessionId"`
         SenderId *int `json:"senderId"`
         FromAutoReply *bool `json:"fromAutoReply"`
-        MessageDestinations *[]Message `json:"messageDestinations"`
+        MessageDestinations *[]ParseMessage `json:"messageDestinations"`
         EventDestinations *map[string]string `json:"eventDestinations"`
     }
-
-    var event_sourcing_structure_local EventSourcingStructureLocal
 
     json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
     json_decoder.DisallowUnknownFields() // Force errors
 
-    err = json_decoder.Decode(&event_sourcing_structure_local)
+    var decoded ParseEventSourceStruct
+    var messages []ParseMessage
 
+    err = json_decoder.Decode(&decoded)
     if err != nil {
-        fmt.Printf("JSON decode ERROR %v", err)
+        return nil, err
     }
 
-    var keys []int
-    var new_map map[int]string
-
-    for key_string, value := range *event_sourcing_structure_local.EventDestinations {
-        key := int(key_string)
-        new_map[key] = value
-        keys.append(key)
-    }
-    sort.Ints(keys)
-
-    event_destinations := new([]string)
-
-    for key := range keys {
-        event_destinations.append(new_map[key]) 
+    if ((decoded.MessageId == nil) ||
+    (decoded.SessionId == nil) ||
+    (decoded.SenderId == nil) ||
+    (decoded.FromAutoReply == nil) ||
+    (decoded.MessageDestinations == nil) ||
+    (decoded.EventDestinations == nil)) {
+        err = errors.New("A required key was not found.")
+        return nil, err
     }
 
-    event_sourcing_structure.MessageId = *event_sourcing_structure_local.MessageId
-    event_sourcing_structure.SessionId = *event_sourcing_structure_local.SessionId
-    event_sourcing_structure.SenderId = *event_sourcing_structure_local.SenderId
-    event_sourcing_structure.FromAutoReply = *event_sourcing_structure_local.FromAutoReply
-    event_sourcing_structure.MessageDestinations = *event_sourcing_structure_local.MessageDestinations
-    event_sourcing_structure.EventDestinations = event_destinations
+    messages = *decoded.MessageDestinations
 
-    return event_sourcing_structure
+    for _, parse_message := range messages {
+        if ((parse_message.DestinationId == nil) ||
+        (parse_message.MessageId == nil) ||
+        (parse_message.MessageText == nil)) {
+            err = errors.New("A required key was not found.")
+            return nil, err
+        }
+    }
+
+    result = new(EventSourcingStructure)
+    result.MessageId = *decoded.MessageId
+    result.SessionId = *decoded.SessionId
+    result.SenderId = *decoded.SenderId
+    result.FromAutoReply = *decoded.FromAutoReply
+    result.EventDestinations = *decoded.EventDestinations
+
+    for _, parse_message := range messages {
+
+        var msg = new(Message)
+        msg.DestinationId = *parse_message.DestinationId
+        msg.MessageId = *parse_message.MessageId
+        msg.MessageText = *parse_message.MessageText
+
+        result.MessageDestinations = append(result.MessageDestinations, msg)
+    }
+
+    return result, nil
 }
 
 func main() {
@@ -248,7 +294,7 @@ func main() {
     for {
         message, err := reader.ReadMessage(context)
         if err != nil {
-            fmt.Errorf("[ERROR] %v\n", err)
+            fmt.Printf("[ERROR] %v\n", err) // :ERROR
             return
         }
         fmt.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n",
@@ -258,13 +304,18 @@ func main() {
             string(message.Key),
             string(message.Value))
 
-        event_sourcing_structure := parse_event_sourcing_structure(message.Value)
-        first_destination, remaining := pop_front(event_sourcing_structure.EventDestinations)
-        fmt.Println(first_destination)
+        event_sourcing_structure, err := parse_event_sourcing_structure(message.Value)
+        if err != nil {
+            fmt.Printf("Error during parsing of event sourcing struct: %v\n", err) // :ERROR
+        }
 
-        event_sourcing_structure.EventDestinations = remaining
+        fmt.Println(event_sourcing_structure)
 
-        handle_event(event_sourcing_structure, db)
+        //first_destination := pop_first_event_destination(event_sourcing_structure.EventDestinations)
+        //fmt.Println(first_destination)
+        //event_sourcing_structure.EventDestinations = remaining
+
+        //handle_event(event_sourcing_structure, db)
     }
 
     //*/

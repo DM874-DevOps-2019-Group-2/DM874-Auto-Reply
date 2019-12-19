@@ -47,18 +47,17 @@ func main() {
               "messageId": "UID",
               "sessionId": "UID",
               "senderId": 42,
+              "fromAutoReply": false,
               "messageDestinations": [
                 {
                   "destinationId": 12,
                   "messageId": "UID",
-                  "message": "Hello world!",
-                  "fromAutoReply": false
+                  "message": "Hello world!"
                 },
                 {
                   "destinationId": 8,
                   "messageId": "UID",
-                  "message": "Goodbye, cruel world.",
-                  "fromAutoReply": true
+                  "message": "Goodbye, cruel world."
                 }
               ],
               "eventDestinations": {
