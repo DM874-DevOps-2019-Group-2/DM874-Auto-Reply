@@ -17,6 +17,7 @@ docker run \
     -it --entrypoint=/bin/sh \
     -e AUTO_REPLY_CONSUMER_TOPIC=AutoReplyConsumerTopic \
     -e AUTO_REPLY_PRODUCER_TOPIC=AutoReplyProducerTopic \
+    -e AUTO_REPLY_CONFIG_TOPIC=AutoReplyConfigTopic \
     -e KAFKA_BROKERS="172.19.0.2:9092" \
     -e DATABASE_HOST=172.17.0.2 \
     -e DATABASE_PORT=5432 \

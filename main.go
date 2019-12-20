@@ -5,7 +5,7 @@ import (
     "context"
     "fmt"
     "strings"
-    //"strconv" 
+    // "strconv" 
     // "sync"
     "time"
     "os"
@@ -15,9 +15,11 @@ import (
 
     "encoding/json"
     "bytes"
+    "sort"
 
     "github.com/segmentio/kafka-go"
     _ "github.com/lib/pq"
+    guuid "github.com/google/uuid"
 )
 
 type EventSourcingStructure struct {
@@ -27,7 +29,7 @@ type EventSourcingStructure struct {
     SendingUserId int
     RecipientUserIds []int
     FromAutoReply bool
-    EventDestinations map[int]string
+    EventDestinations []string
 }
 
 // type Message struct {
@@ -45,45 +47,49 @@ type EventSourcingStructure struct {
 //     EventDestinations map[string]string
 // }
 
-/*
-func pop_first_event_destination(event_destinations *map[string]string) string {
+func pop_first_event_destination(event_destinations *[]string) string {
     
-    var result string
+    head := (*event_destinations)[0]
+    (*event_destinations) = (*event_destinations)[1:]
 
-    var min_key int = int(uint((~0)>>1))
-    var min_key_str string
+    return head
 
-    for key_string, _ := range *event_destinations {
-        key := strconv.Atoi(key_string)
+    // var result string
+
+    // min_key := int(^uint(0) >> 1)
+
+    // for key, _ := range *event_destinations {
         
-        if key < min_key {
-            min_key := key
-            min_key_str = min_key_str
-        }
-    }
+    //     if key < min_key {
+    //         min_key = key
+    //     }
+    // }
 
-    result = (*event_destinations)[min_key_str]
-    delete(*event_destinations, min_key_str);
-    return result
+    // result, present := (*event_destinations)[min_key]
+
+    // if present {
+    //     delete(*event_destinations, min_key)
+    // }
+
+    // return result, present
 }
 
-func handle_event(event_struct EventSourcingStructure, db *sql.DB) []*EventSourcingStructure {
+func handle_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generator guuid.UUID) []*EventSourcingStructure {
 
-    var result := make([]*EventSourcingStructure, 0)
+    result := make([]*EventSourcingStructure, 1)
+    result = append(result, event_struct)
 
-    if *event_struct.FromAutoReply {
+    if event_struct.FromAutoReply {
         return result
     }
 
-    sender_id := *event_struct.SenderId
+    sender_id := event_struct.SendingUserId
     
-    query_string := "SELECT * FROM auto_reply WHERE user_id=$1 ;"
+    query_string := "SELECT reply_text, enabled FROM auto_reply WHERE user_id=$1 ;"
 
-    for _, message := range *event_struct.MessageDestinations {
+    for _, receiving_user_id := range event_struct.RecipientUserIds {
 
-        receiver_id := message.DestinationId
-
-        rows, err := db.Query(query_string, receiver_id)
+        rows, err := db.Query(query_string, receiving_user_id)
         if err != nil {
             fmt.Printf("[ERROR]: %v\n", err) // :ERROR
             fmt.Printf("EventSourcingStructure: %+v\n", event_struct)
@@ -92,13 +98,12 @@ func handle_event(event_struct EventSourcingStructure, db *sql.DB) []*EventSourc
         fmt.Println("rows: ", rows)
 
         if rows == nil {
-            fmt.Printf("[ERROR]: No user by ID %d.\n", receiver_id) // :ERROR
-            return
+            fmt.Printf("[ERROR]: No user by ID %d.\n", receiving_user_id) // :ERROR
+            return nil
         }
         defer rows.Close()
 
-        type Auto_Reply_Row struct {
-            user_id int64
+        type ResultRow struct {
             reply_text string
             enabled bool
         }
@@ -106,38 +111,35 @@ func handle_event(event_struct EventSourcingStructure, db *sql.DB) []*EventSourc
         fmt.Println("Rows:")
 
         for rows.Next() {
-            var row Auto_Reply_Row
-            rows.Scan(&row.user_id, &row.reply_text, &row.enabled)
+            var row ResultRow
+            rows.Scan(&row.reply_text, &row.enabled)
             fmt.Println(row)
 
             if row.enabled {
-                result.append(new_event_sourcing_struct(source, destination, message))
+                new_event_struct := new(EventSourcingStructure)
+
+                *new_event_struct = EventSourcingStructure {
+                    MessageUid: uuid_generator.String(),
+                    SessionUid: event_struct.SessionUid,
+                    MessageBody: row.reply_text,
+                    SendingUserId: receiving_user_id,
+                    RecipientUserIds: []int{sender_id},
+                    FromAutoReply: true,
+                    EventDestinations: []string{"TOPIC1", "TOPIC2", "TOPIC3"},
+                }
+                result = append(result, new_event_struct)
             }
         }
     }
     
-    // result, err := statement.Query(sender)   
+    return result
 }
+/*
 */
 
-func parse_event_sourcing_structure(json_bytes []byte) (*EventSourcingStructure, error) {
+func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, error) {
     var result *EventSourcingStructure = nil
     var err error
-
-    // type ParseMessage struct {
-    //     DestinationId *int `json:"destinationId"`
-    //     MessageId *string `json:"messageId"`
-    //     MessageText *string `json:"message"`
-    // }
-
-    // type ParseEventSourceStruct struct {
-    //     MessageId *string `json:"messageId"`
-    //     SessionId *string `json:"sessionId"`
-    //     SenderId *int `json:"senderId"`
-    //     FromAutoReply *bool `json:"fromAutoReply"`
-    //     MessageDestinations *[]ParseMessage `json:"messageDestinations"`
-    //     EventDestinations *map[string]string `json:"eventDestinations"`
-    // }
 
     type ParseEventSourceStruct struct {
         MessageUid *string `json:"messageUid"`
@@ -177,15 +179,29 @@ func parse_event_sourcing_structure(json_bytes []byte) (*EventSourcingStructure,
     result.SendingUserId = *decoded.SendingUserId
     result.RecipientUserIds = *decoded.RecipientUserIds
     result.FromAutoReply = *decoded.FromAutoReply
-    result.EventDestinations = *decoded.EventDestinations
+
+    keys := make([]int, 0)
+
+    for key, _ := range *decoded.EventDestinations {
+        keys = append(keys, key)
+    }
+
+    keys = sort.IntSlice(keys)
+
+    // result.EventDestinations = new([]string)
+
+    for _, key := range keys {
+        result.EventDestinations = append(result.EventDestinations, (*decoded.EventDestinations)[key])
+    }
 
     return result, nil
 }
 
 func main() {
 
-    inTopic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
-    // outTopic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
+    auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
+    //auto_reply_producer_topic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
+    //auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_TOPIC")
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
@@ -195,9 +211,9 @@ func main() {
     db_password := os.Getenv("DATABASE_PASSWORD")
     db_name     := os.Getenv("DATABASE_NAME")
 
-    reader := kafka.NewReader(kafka.ReaderConfig{
+    message_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
-        Topic:       inTopic,
+        Topic:       auto_reply_consumer_topic,
         Partition:   0,
         MinBytes:    10, // 10B
         MaxBytes:    10<<20, // 10MiB
@@ -206,21 +222,21 @@ func main() {
         StartOffset: kafka.LastOffset,
     })
     defer func() {
-        fmt.Println("Closeing reader")
-        reader.Close()
+        fmt.Println("Closeing message_reader")
+        message_reader.Close()
     }()
 
-    fmt.Println(reader.Offset())
-    // reader.SetOffset(kafka.LastOffset)
+    fmt.Println(message_reader.Offset())
+    // message_reader.SetOffset(kafka.LastOffset)
 
-    // fmt.Println(reader.Offset()) // will always return -1 when GroupID is set
-    // fmt.Println(reader.Lag()) // will always return -1 when GroupID is set
-    // fmt.Println(reader.ReadLag(context.Background())) // will return an error when GroupID is set
-    // fmt.Println(reader.Stats()) // will return a partition of -1 when GroupID is set
+    // fmt.Println(message_reader.Offset()) // will always return -1 when GroupID is set
+    // fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
+    // fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
+    // fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
 
     // writer := kafka.NewWriter(kafka.WriterConfig{
     //     Brokers: listedBrokers,
-    //     Topic: inTopic,
+    //     Topic: auto_reply_consumer_topic,
     //     Balancer: &kafka.LeastBytes{},
     // })
     // defer func() {
@@ -252,11 +268,11 @@ func main() {
 
     //*/
 
-    // encoded_event_sourcing_structure := new(bytes.Buffer)
-    // json_encoder := json.NewEncoder(encoded_event_sourcing_structure)
-    // json_encoder.Encode(event_sourcing_structure)
+    // encoded_event_sourcing_struct := new(bytes.Buffer)
+    // json_encoder := json.NewEncoder(encoded_event_sourcing_struct)
+    // json_encoder.Encode(event_sourcing_struct)
     
-    // fmt.Printf("%+v\n", encoded_event_sourcing_structure)
+    // fmt.Printf("%+v\n", encoded_event_sourcing_struct)
 
 
 
@@ -283,8 +299,10 @@ func main() {
 
     context := context.Background()
 
+    uuid_generator := guuid.New()
+
     for {
-        message, err := reader.ReadMessage(context)
+        message, err := message_reader.ReadMessage(context)
         if err != nil {
             fmt.Printf("[ERROR] %v\n", err) // :ERROR
             return
@@ -296,18 +314,22 @@ func main() {
             string(message.Key),
             string(message.Value))
 
-        event_sourcing_structure, err := parse_event_sourcing_structure(message.Value)
+        event_sourcing_struct, err := parse_event_sourcing_struct(message.Value)
         if err != nil {
-            fmt.Printf("Error during parsing of event sourcing struct: %v\n", err) // :ERROR
+            fmt.Fprintf(os.Stderr, "Error during parsing of event sourcing struct: %v\n", err) // :ERROR
         }
 
-        fmt.Println(event_sourcing_structure)
+        fmt.Println(event_sourcing_struct)
 
-        //first_destination := pop_first_event_destination(event_sourcing_structure.EventDestinations)
-        //fmt.Println(first_destination)
-        //event_sourcing_structure.EventDestinations = remaining
+        fmt.Println(event_sourcing_struct.EventDestinations)
+        first_destination := pop_first_event_destination(&event_sourcing_struct.EventDestinations)
+        fmt.Println(first_destination)
+        fmt.Println(event_sourcing_struct.EventDestinations)
 
-        //handle_event(event_sourcing_structure, db)
+        new_event_sourcing_structs := handle_event(event_sourcing_struct, db, uuid_generator)
+        for _, event_sourcing_struct := range new_event_sourcing_structs {
+            fmt.Println(event_sourcing_struct)
+        }
     }
 
     //*/
