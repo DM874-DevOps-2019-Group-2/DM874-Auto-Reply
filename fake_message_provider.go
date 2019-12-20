@@ -44,22 +44,12 @@ func main() {
             //Key: []byte("message"),
             Value: []byte(`
             {
-              "messageId": "UID",
-              "sessionId": "UID",
+              "messageUid": "UID",
+              "sessionUid": "UID",
+              "messageBody": "Hello, world!",
               "senderId": 42,
+              "recipientIds": [12, 8],
               "fromAutoReply": false,
-              "messageDestinations": [
-                {
-                  "destinationId": 12,
-                  "messageId": "UID",
-                  "message": "Hello world!"
-                },
-                {
-                  "destinationId": 8,
-                  "messageId": "UID",
-                  "message": "Goodbye, cruel world."
-                }
-              ],
               "eventDestinations": {
                 "1": "TOPIC1",
                 "2": "TOPIC2"

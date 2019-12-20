@@ -20,29 +20,30 @@ import (
     _ "github.com/lib/pq"
 )
 
-// type EventSourcingStructure struct {
-//     MessageUid string
-//     SessionUid string
-//     SendingUserId int
-//     RecipientUserIds []int
-//     FromAutoReply bool
-//     EventDestinations []string
+type EventSourcingStructure struct {
+    MessageUid string
+    SessionUid string
+    MessageBody string
+    SendingUserId int
+    RecipientUserIds []int
+    FromAutoReply bool
+    EventDestinations map[int]string
+}
+
+// type Message struct {
+//     DestinationId int
+//     MessageId string
+//     MessageText string
 // }
 
-type Message struct {
-    DestinationId int
-    MessageId string
-    MessageText string
-}
-
-type EventSourcingStructure struct {
-    MessageId string
-    SessionId string
-    SenderId int
-    FromAutoReply bool
-    MessageDestinations []*Message
-    EventDestinations map[string]string
-}
+// type EventSourcingStructure struct {
+//     MessageId string
+//     SessionId string
+//     SenderId int
+//     FromAutoReply bool
+//     MessageDestinations []*Message
+//     EventDestinations map[string]string
+// }
 
 /*
 func pop_first_event_destination(event_destinations *map[string]string) string {
@@ -123,69 +124,60 @@ func parse_event_sourcing_structure(json_bytes []byte) (*EventSourcingStructure,
     var result *EventSourcingStructure = nil
     var err error
 
-    type ParseMessage struct {
-        DestinationId *int `json:"destinationId"`
-        MessageId *string `json:"messageId"`
-        MessageText *string `json:"message"`
-    }
+    // type ParseMessage struct {
+    //     DestinationId *int `json:"destinationId"`
+    //     MessageId *string `json:"messageId"`
+    //     MessageText *string `json:"message"`
+    // }
+
+    // type ParseEventSourceStruct struct {
+    //     MessageId *string `json:"messageId"`
+    //     SessionId *string `json:"sessionId"`
+    //     SenderId *int `json:"senderId"`
+    //     FromAutoReply *bool `json:"fromAutoReply"`
+    //     MessageDestinations *[]ParseMessage `json:"messageDestinations"`
+    //     EventDestinations *map[string]string `json:"eventDestinations"`
+    // }
 
     type ParseEventSourceStruct struct {
-        MessageId *string `json:"messageId"`
-        SessionId *string `json:"sessionId"`
-        SenderId *int `json:"senderId"`
+        MessageUid *string `json:"messageUid"`
+        SessionUid *string `json:"sessionUid"`
+        MessageBody *string `json:"messageBody"`
+        SendingUserId *int `json:"senderId"`
+        RecipientUserIds *[]int `json:"recipientIds"`
         FromAutoReply *bool `json:"fromAutoReply"`
-        MessageDestinations *[]ParseMessage `json:"messageDestinations"`
-        EventDestinations *map[string]string `json:"eventDestinations"`
+        EventDestinations *map[int]string `json:eventDestinations`
     }
 
     json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
     json_decoder.DisallowUnknownFields() // Force errors
 
     var decoded ParseEventSourceStruct
-    var messages []ParseMessage
 
     err = json_decoder.Decode(&decoded)
     if err != nil {
         return nil, err
     }
 
-    if ((decoded.MessageId == nil) ||
-    (decoded.SessionId == nil) ||
-    (decoded.SenderId == nil) ||
+    if ((decoded.MessageUid == nil) ||
+    (decoded.SessionUid == nil) ||
+    (decoded.MessageBody == nil) ||
+    (decoded.SendingUserId == nil) ||
+    (decoded.RecipientUserIds == nil) ||
     (decoded.FromAutoReply == nil) ||
-    (decoded.MessageDestinations == nil) ||
     (decoded.EventDestinations == nil)) {
         err = errors.New("A required key was not found.")
         return nil, err
     }
 
-    messages = *decoded.MessageDestinations
-
-    for _, parse_message := range messages {
-        if ((parse_message.DestinationId == nil) ||
-        (parse_message.MessageId == nil) ||
-        (parse_message.MessageText == nil)) {
-            err = errors.New("A required key was not found.")
-            return nil, err
-        }
-    }
-
     result = new(EventSourcingStructure)
-    result.MessageId = *decoded.MessageId
-    result.SessionId = *decoded.SessionId
-    result.SenderId = *decoded.SenderId
+    result.MessageUid = *decoded.MessageUid
+    result.SessionUid = *decoded.SessionUid
+    result.MessageBody = *decoded.MessageBody
+    result.SendingUserId = *decoded.SendingUserId
+    result.RecipientUserIds = *decoded.RecipientUserIds
     result.FromAutoReply = *decoded.FromAutoReply
     result.EventDestinations = *decoded.EventDestinations
-
-    for _, parse_message := range messages {
-
-        var msg = new(Message)
-        msg.DestinationId = *parse_message.DestinationId
-        msg.MessageId = *parse_message.MessageId
-        msg.MessageText = *parse_message.MessageText
-
-        result.MessageDestinations = append(result.MessageDestinations, msg)
-    }
 
     return result, nil
 }
