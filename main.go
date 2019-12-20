@@ -197,10 +197,42 @@ func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, er
     return result, nil
 }
 
+func encode_event_sourcing_struct(event_struct *EventSourcingStructure) []byte {
+    
+    type EncodeEventSourceStruct struct {
+        MessageUid string `json:"messageUid"`
+        SessionUid string `json:"sessionUid"`
+        MessageBody string `json:"messageBody"`
+        SendingUserId int `json:"senderId"`
+        RecipientUserIds []int `json:"recipientIds"`
+        FromAutoReply bool `json:"fromAutoReply"`
+        EventDestinations map[int]string `json:eventDestinations`
+    }
+
+    encode_event_struct := EncodeEventSourceStruct{}
+    encode_event_struct.MessageUid = event_struct.MessageUid
+    encode_event_struct.SessionUid = event_struct.SessionUid
+    encode_event_struct.MessageBody = event_struct.MessageBody
+    encode_event_struct.SendingUserId = event_struct.SendingUserId
+    encode_event_struct.RecipientUserIds = event_struct.RecipientUserIds
+    encode_event_struct.FromAutoReply = event_struct.FromAutoReply
+    encode_event_struct.EventDestinations = map[int]string{}
+
+    for ordinal, topic := range event_struct.EventDestinations {
+        encode_event_struct.EventDestinations[ordinal] = topic
+    }
+
+    result, err := json.Marshal(encode_event_struct)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "During json encoding: %v\n", err)
+    }
+    return result
+}
+
 func main() {
 
     auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
-    //auto_reply_producer_topic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
+    auto_reply_producer_topic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
     //auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_TOPIC")
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
@@ -226,23 +258,24 @@ func main() {
         message_reader.Close()
     }()
 
+    message_writer := kafka.NewWriter(kafka.WriterConfig{
+        Brokers: listedBrokers,
+        Topic: auto_reply_producer_topic,
+        Balancer: &kafka.LeastBytes{},
+    })
+    defer func() {
+        fmt.Println("Closeing writer")
+        message_writer.Close()
+    }()
+
     fmt.Println(message_reader.Offset())
-    // message_reader.SetOffset(kafka.LastOffset)
+    message_reader.SetOffset(kafka.LastOffset)
 
-    // fmt.Println(message_reader.Offset()) // will always return -1 when GroupID is set
-    // fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
-    // fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
-    // fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
+    fmt.Println(message_reader.Offset()) // will always return -1 when GroupID is set
+    fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
+    fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
+    fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
 
-    // writer := kafka.NewWriter(kafka.WriterConfig{
-    //     Brokers: listedBrokers,
-    //     Topic: auto_reply_consumer_topic,
-    //     Balancer: &kafka.LeastBytes{},
-    // })
-    // defer func() {
-    //     fmt.Println("Closeing writer")
-    //     writer.Close()
-    // }()
 
     //*
     
@@ -277,7 +310,7 @@ func main() {
 
 
     /*TEST
-    writer.WriteMessages(context.Background(),
+    message_writer.WriteMessages(context.Background(),
         kafka.Message{
             //Key: []byte("message"),
             Value: []byte(`{
@@ -327,8 +360,13 @@ func main() {
         fmt.Println(event_sourcing_struct.EventDestinations)
 
         new_event_sourcing_structs := handle_event(event_sourcing_struct, db, uuid_generator)
-        for _, event_sourcing_struct := range new_event_sourcing_structs {
-            fmt.Println("new:", event_sourcing_struct)
+
+        for _, new_event_struct := range new_event_sourcing_structs {
+
+            bytes := encode_event_sourcing_struct(new_event_struct)
+            fmt.Println("outbound:", new_event_struct, bytes)
+
+            message_writer.WriteMessages(context, kafka.Message{Value: bytes})
         }
     }
 
