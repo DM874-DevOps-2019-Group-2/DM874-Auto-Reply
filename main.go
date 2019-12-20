@@ -76,7 +76,7 @@ func pop_first_event_destination(event_destinations *[]string) string {
 
 func handle_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generator guuid.UUID) []*EventSourcingStructure {
 
-    result := make([]*EventSourcingStructure, 1)
+    result := make([]*EventSourcingStructure, 0)
     result = append(result, event_struct)
 
     if event_struct.FromAutoReply {
@@ -328,7 +328,7 @@ func main() {
 
         new_event_sourcing_structs := handle_event(event_sourcing_struct, db, uuid_generator)
         for _, event_sourcing_struct := range new_event_sourcing_structs {
-            fmt.Println(event_sourcing_struct)
+            fmt.Println("new:", event_sourcing_struct)
         }
     }
 
