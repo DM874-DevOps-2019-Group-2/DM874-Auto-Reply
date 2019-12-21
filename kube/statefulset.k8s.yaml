@@ -13,7 +13,7 @@ spec:
   template:
     metadata:
       labels:
-        app: router
+        app: auto-reply
     spec:
       initContainers:
         - name: migrations-container
