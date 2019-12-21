@@ -9,19 +9,6 @@ import (
     "github.com/segmentio/kafka-go"
 )
 
-type DM874Message struct {
-    DestinationId *int `json:"destinationid"`
-    MessageText *string `json:"message"`
-    FromAutoReply *bool `json:"fromautoreply"`
-}
-
-type EventSourcingStructure struct {
-    MessageId *string `json:"messageid"`
-    SenderId *int `json:"senderid"`
-    MessageDestinations *[]DM874Message `json:"messagedestinations"`
-    Tasks *map[string]string `json:"tasks"`
-}
-
 func main() {
 
     auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
