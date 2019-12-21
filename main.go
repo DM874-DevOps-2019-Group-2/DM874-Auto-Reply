@@ -32,20 +32,10 @@ type EventSourcingStructure struct {
     EventDestinations []string
 }
 
-// type Message struct {
-//     DestinationId int
-//     MessageId string
-//     MessageText string
-// }
-
-// type EventSourcingStructure struct {
-//     MessageId string
-//     SessionId string
-//     SenderId int
-//     FromAutoReply bool
-//     MessageDestinations []*Message
-//     EventDestinations map[string]string
-// }
+type ConfigMessage struct {
+    Action string
+    Arguments *interface{}
+}
 
 func pop_first_event_destination(event_destinations *[]string) string {
     
@@ -134,8 +124,47 @@ func handle_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generat
     
     return result
 }
-/*
-*/
+
+func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
+    var result *ConfigMessage = nil
+    var err error
+
+    type ParseConfigMessage struct {
+        Action *string `json:"action"`
+        Arguments map[string]*json.RawMessage `json:"payload`
+    }
+
+    json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
+    json_decoder.DisallowUnknownFields() // Force errors
+
+    var decoded ParseConfigMessage
+
+    err = json_decoder.Decode(&decoded)
+    if err != nil {
+        return nil, err
+    }
+
+    if (decoded.Action == nil) || (decoded.Arguments == nil) {
+        err = errors.New("A required key was not found.")
+        return nil, err
+    }
+
+    // result = new(ConfigMessage)
+    // result.Action = *decoded.Action
+
+    // switch result.Action {
+    // case "set_enabled_state":
+    //     var args struct {
+    //         Enabled bool `json:"enabled"`
+    //     }
+    //     // result.Arguments = json.Unmarsharl(decoded.Arguments, &args)
+    // default:
+        
+    // }
+
+
+    return result, nil
+}
 
 func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, error) {
     var result *EventSourcingStructure = nil
@@ -277,17 +306,24 @@ func config_event_loop(wait_group *sync.WaitGroup) {
     context := context.Background()
 
     for {
-        message, err := config_reader.ReadMessage(context)
+        kafka_message, err := config_reader.ReadMessage(context)
         if err != nil {
             fmt.Printf("[ERROR] %v\n", err) // :ERROR
             return
         }
         fmt.Printf("config at topic/partition/offset %v/%v/%v: %s = %s\n",
-            message.Topic,
-            message.Partition,
-            message.Offset,
-            string(message.Key),
-            string(message.Value))
+            kafka_message.Topic,
+            kafka_message.Partition,
+            kafka_message.Offset,
+            string(kafka_message.Key),
+            string(kafka_message.Value))
+
+        config_message, err := parse_config_message(kafka_message.Value)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error during parsing of configuration message: %v\n", err) // :ERROR
+        }
+
+        fmt.Println("ConfigMessage:", config_message)
     }
 }
 
