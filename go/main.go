@@ -38,12 +38,12 @@ type ConfigMessage struct {
 }
 
 type ConfigEnableArgs struct {
-    UserId int `json:"user_id"`
+    UserId int `json:"userID"`
 }
 
 type ConfigTextArgs struct {
-    UserId int `json:"user_id"`
-    Text string `json:"text"`
+    UserId int `json:"userID"`
+    Text string `json:"messageBody"`
 }
 
 func pop_first_event_destination(event_destinations *[]string) string {
@@ -52,86 +52,6 @@ func pop_first_event_destination(event_destinations *[]string) string {
     (*event_destinations) = (*event_destinations)[1:]
 
     return head
-
-    // var result string
-
-    // min_key := int(^uint(0) >> 1)
-
-    // for key, _ := range *event_destinations {
-        
-    //     if key < min_key {
-    //         min_key = key
-    //     }
-    // }
-
-    // result, present := (*event_destinations)[min_key]
-
-    // if present {
-    //     delete(*event_destinations, min_key)
-    // }
-
-    // return result, present
-}
-
-func handle_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generator guuid.UUID) []*EventSourcingStructure {
-
-    result := make([]*EventSourcingStructure, 0)
-    result = append(result, event_struct)
-
-    if event_struct.FromAutoReply {
-        return result
-    }
-
-    sender_id := event_struct.SendingUserId
-    
-    query_string := "SELECT reply_text, enabled FROM auto_reply WHERE user_id=$1 ;"
-
-    for _, receiving_user_id := range event_struct.RecipientUserIds {
-
-        rows, err := db.Query(query_string, receiving_user_id)
-        if err != nil {
-            fmt.Printf("[ERROR]: %v\n", err) // :ERROR
-            fmt.Printf("EventSourcingStructure: %+v\n", event_struct)
-        }
-
-        fmt.Println("rows: ", rows)
-
-        if rows == nil {
-            fmt.Printf("[ERROR]: No user by ID %d.\n", receiving_user_id) // :ERROR
-            return nil
-        }
-        defer rows.Close()
-
-        type ResultRow struct {
-            reply_text string
-            enabled bool
-        }
-
-        fmt.Println("Rows:")
-
-        for rows.Next() {
-            var row ResultRow
-            rows.Scan(&row.reply_text, &row.enabled)
-            fmt.Println(row)
-
-            if row.enabled {
-                new_event_struct := new(EventSourcingStructure)
-
-                *new_event_struct = EventSourcingStructure {
-                    MessageUid: uuid_generator.String(),
-                    SessionUid: event_struct.SessionUid,
-                    MessageBody: row.reply_text,
-                    SendingUserId: receiving_user_id,
-                    RecipientUserIds: []int{sender_id},
-                    FromAutoReply: true,
-                    EventDestinations: []string{"TOPIC1", "TOPIC2", "TOPIC3"},
-                }
-                result = append(result, new_event_struct)
-            }
-        }
-    }
-    
-    return result
 }
 
 func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
@@ -339,6 +259,8 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
+    router_consumer_topic := os.Getenv("ROUTER_CONSUMER_TOPIC")
+
     message_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
         Topic:       auto_reply_consumer_topic,
@@ -354,12 +276,6 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
         message_reader.Close()
     }()
     message_reader.SetOffset(kafka.LastOffset)
-
-    fmt.Println(message_reader.Offset())
-    fmt.Println(message_reader.Offset()) // will always return -1 when GroupID is set
-    fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
-    fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
-    fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
 
     context := context.Background()
 
@@ -390,7 +306,7 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
         fmt.Println(first_destination)
         fmt.Println(event_sourcing_struct.EventDestinations)
 
-        new_event_sourcing_structs := handle_event(event_sourcing_struct, db, uuid_generator)
+        new_event_sourcing_structs := handle_chat_message_event(event_sourcing_struct, db, uuid_generator, router_consumer_topic)
 
         for _, new_event_struct := range new_event_sourcing_structs {
 
@@ -419,6 +335,68 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
             message_writer.WriteMessages(context, kafka.Message{Value: bytes})
         }
     }
+
+}
+
+func handle_chat_message_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generator guuid.UUID, router_consumer_topic string) []*EventSourcingStructure {
+
+    result := make([]*EventSourcingStructure, 0)
+    result = append(result, event_struct)
+
+    if event_struct.FromAutoReply {
+        return result
+    }
+
+    sender_id := event_struct.SendingUserId
+    
+    query_string := "SELECT reply_text, enabled FROM auto_reply WHERE user_id=$1 ;"
+
+    for _, receiving_user_id := range event_struct.RecipientUserIds {
+
+        rows, err := db.Query(query_string, receiving_user_id)
+        if err != nil {
+            fmt.Printf("[ERROR]: %v\n", err) // :ERROR
+            fmt.Printf("EventSourcingStructure: %+v\n", event_struct)
+        }
+
+        fmt.Println("rows: ", rows)
+
+        if rows == nil {
+            fmt.Printf("[ERROR]: No user by ID %d.\n", receiving_user_id) // :ERROR
+            return nil
+        }
+        defer rows.Close()
+
+        type ResultRow struct {
+            reply_text string
+            enabled bool
+        }
+
+        fmt.Println("Rows:")
+
+        for rows.Next() {
+            var row ResultRow
+            rows.Scan(&row.reply_text, &row.enabled)
+            fmt.Println(row)
+
+            if row.enabled {
+                new_event_struct := new(EventSourcingStructure)
+
+                *new_event_struct = EventSourcingStructure {
+                    MessageUid: uuid_generator.String(),
+                    SessionUid: event_struct.SessionUid,
+                    MessageBody: row.reply_text,
+                    SendingUserId: receiving_user_id,
+                    RecipientUserIds: []int{sender_id},
+                    FromAutoReply: true,
+                    EventDestinations: []string{router_consumer_topic},
+                }
+                result = append(result, new_event_struct)
+            }
+        }
+    }
+    
+    return result
 }
 
 func main() {
