@@ -5,5 +5,6 @@ CREATE DATABASE auto_reply_db;
 
 CREATE TABLE auto_reply (
 	user_id integer PRIMARY KEY,
-	reply_text text NOT NULL
+	reply_text text NOT NULL,
+	active boolean NOT NULL DEFAULT(false),
 );

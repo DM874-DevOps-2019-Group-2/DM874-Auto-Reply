@@ -2,9 +2,9 @@ FROM golang:1.13.5-alpine
 
 RUN apk add git make
 
-RUN adduser --disabled-password golang
-USER golang
-WORKDIR /home/golang/
+#RUN adduser --disabled-password golang
+#USER golang
+#WORKDIR /home/golang/
 
 
 # COPY dependencies.txt /dependencies.txt
