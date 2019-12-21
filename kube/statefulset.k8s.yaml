@@ -31,8 +31,6 @@ spec:
                 name: db-secrets
             - configMapRef:
                 name: auto-reply-config
-          securityContext:
-            privileged: true
           resources:
             requests:
               memory: "1Gi"
