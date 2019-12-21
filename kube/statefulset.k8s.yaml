@@ -21,7 +21,7 @@ spec:
           imagePullPolicy: Always
           envFrom:
             - secretRef:
-              name: db-secrets
+                name: db-secrets
       containers:
         - name: auto-reply-container
           image: dm874/auto-reply:latest
