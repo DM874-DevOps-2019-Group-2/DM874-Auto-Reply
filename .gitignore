@@ -5,3 +5,4 @@
 *.test
 #Executable files:
 main
+fake_message_provider

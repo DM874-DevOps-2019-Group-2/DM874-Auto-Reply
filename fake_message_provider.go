@@ -25,7 +25,7 @@ type EventSourcingStructure struct {
 func main() {
 
     auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
-    auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_TOPIC")
+    auto_reply_config_consumer_topic := os.Getenv("AUTO_REPLY_CONFIG_CONSUMER_TOPIC")
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
@@ -55,7 +55,7 @@ func main() {
 
     config_writer := kafka.NewWriter(kafka.WriterConfig{
         Brokers: listedBrokers,
-        Topic: auto_reply_config_topic,
+        Topic: auto_reply_config_consumer_topic,
         Balancer: &kafka.LeastBytes{},
     })
     defer func() {

@@ -404,6 +404,11 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
 
             topic := new_event_struct.EventDestinations[0]
 
+            if (len(topic) <= 0) {
+                fmt.Fprintf(os.Stderr, "Zero length event destination topic.\n")
+                continue
+            }
+            
             message_writer := kafka.NewWriter(kafka.WriterConfig{
                 Brokers: listedBrokers,
                 Topic: topic,
