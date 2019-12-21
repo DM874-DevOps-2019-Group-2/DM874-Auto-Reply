@@ -39,22 +39,19 @@ func main() {
         chat_message_writer.Close()
     }()
 
-    // chat_message_writer.WriteMessages(context.Background(),
-    //     kafka.Message{
-    //         //Key: []byte("message"),
-    //         Value: []byte(`
-    //         {
-    //           "messageUid": "UID",
-    //           "sessionUid": "UID",
-    //           "messageBody": "Hello, world!",
-    //           "senderId": 42,
-    //           "recipientIds": [12, 8],
-    //           "fromAutoReply": false,
-    //           "eventDestinations": {
-    //             "1": "TOPIC1",
-    //             "2": "TOPIC2"
-    //           }
-    //         }`)})
+    chat_message_writer.WriteMessages(context.Background(),
+        kafka.Message{
+            //Key: []byte("message"),
+            Value: []byte(`
+            {
+              "messageUid": "UID",
+              "sessionUid": "UID",
+              "messageBody": "Hello, world!",
+              "senderId": 42,
+              "recipientIds": [12, 8],
+              "fromAutoReply": false,
+              "eventDestinations": ["TOPIC1", "TOPIC2"]
+            }`)})
 
     config_writer := kafka.NewWriter(kafka.WriterConfig{
         Brokers: listedBrokers,
@@ -71,13 +68,13 @@ func main() {
             Value: []byte(`
             {
                 "action": "enable",
-                "args": {"user_id": 12}
+                "args": {"user_id": 42}
             }`)},
         kafka.Message{
             Value: []byte(`
             {
                 "action": "disable",
-                "args": {"user_id": 8}
+                "args": {"user_id": 33}
             }`)},
         kafka.Message{
             Value: []byte(`

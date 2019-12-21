@@ -15,7 +15,7 @@ import (
 
     "encoding/json"
     "bytes"
-    "sort"
+    // "sort"
 
     "github.com/segmentio/kafka-go"
     _ "github.com/lib/pq"
@@ -23,13 +23,13 @@ import (
 )
 
 type EventSourcingStructure struct {
-    MessageUid string
-    SessionUid string
-    MessageBody string
-    SendingUserId int
-    RecipientUserIds []int
-    FromAutoReply bool
-    EventDestinations []string
+    MessageUid string `json:"messageUid"`
+    SessionUid string `json:"sessionUid"`
+    MessageBody string `json:"messageBody"`
+    SendingUserId int `json:"senderId"`
+    RecipientUserIds []int `json:"recipientIds"`
+    FromAutoReply bool `json:"fromAutoReply"`
+    EventDestinations []string `json:eventDestinations`
 }
 
 type ConfigMessage struct {
@@ -205,7 +205,7 @@ func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, er
         SendingUserId *int `json:"senderId"`
         RecipientUserIds *[]int `json:"recipientIds"`
         FromAutoReply *bool `json:"fromAutoReply"`
-        EventDestinations *map[int]string `json:eventDestinations`
+        EventDestinations *[]string `json:eventDestinations`
     }
 
     json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
@@ -236,50 +236,14 @@ func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, er
     result.SendingUserId = *decoded.SendingUserId
     result.RecipientUserIds = *decoded.RecipientUserIds
     result.FromAutoReply = *decoded.FromAutoReply
-
-    keys := make([]int, 0)
-
-    for key, _ := range *decoded.EventDestinations {
-        keys = append(keys, key)
-    }
-
-    keys = sort.IntSlice(keys)
-
-    // result.EventDestinations = new([]string)
-
-    for _, key := range keys {
-        result.EventDestinations = append(result.EventDestinations, (*decoded.EventDestinations)[key])
-    }
+    result.EventDestinations = *decoded.EventDestinations
 
     return result, nil
 }
 
 func encode_event_sourcing_struct(event_struct *EventSourcingStructure) []byte {
-    
-    type EncodeEventSourceStruct struct {
-        MessageUid string `json:"messageUid"`
-        SessionUid string `json:"sessionUid"`
-        MessageBody string `json:"messageBody"`
-        SendingUserId int `json:"senderId"`
-        RecipientUserIds []int `json:"recipientIds"`
-        FromAutoReply bool `json:"fromAutoReply"`
-        EventDestinations map[int]string `json:eventDestinations`
-    }
 
-    encode_event_struct := EncodeEventSourceStruct{}
-    encode_event_struct.MessageUid = event_struct.MessageUid
-    encode_event_struct.SessionUid = event_struct.SessionUid
-    encode_event_struct.MessageBody = event_struct.MessageBody
-    encode_event_struct.SendingUserId = event_struct.SendingUserId
-    encode_event_struct.RecipientUserIds = event_struct.RecipientUserIds
-    encode_event_struct.FromAutoReply = event_struct.FromAutoReply
-    encode_event_struct.EventDestinations = map[int]string{}
-
-    for ordinal, topic := range event_struct.EventDestinations {
-        encode_event_struct.EventDestinations[ordinal] = topic
-    }
-
-    result, err := json.Marshal(encode_event_struct)
+    result, err := json.Marshal(*event_struct)
     if err != nil {
         fmt.Fprintf(os.Stderr, "During json encoding: %v\n", err)
     }
@@ -291,11 +255,10 @@ func get_db_connection() (*sql.DB, error) {
     var db_port string = os.Getenv("DATABASE_PORT")
     var db_user string = os.Getenv("DATABASE_USER")
     var db_password string = os.Getenv("DATABASE_PASSWORD")
-    var db_name string = os.Getenv("DATABASE_NAME")
+    const db_name = "auto_reply_db"
 
     psql_info := fmt.Sprintf(
-        "host=%s port=%s user=%s "+
-        "password=%s dbname=%s sslmode=disable",
+        "host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
         db_host, db_port, db_user, db_password, db_name)
 
     return sql.Open("postgres", psql_info)
@@ -361,7 +324,10 @@ func config_event_loop(wait_group *sync.WaitGroup) {
             user_id := args.UserId
             text := args.Text
 
-            const query_string = "UPDATE auto_reply SET reply_text = $1 WHERE user_id = $2 ;"
+            const query_string = `
+                INSERT INTO auto_reply (user_id, reply_text, enabled) VALUES ($2, $1, false)
+                ON CONFLICT (user_id) DO
+                UPDATE SET reply_text = $1 ;`
 
             _, err = db.Exec(query_string, text, user_id)
         } else {
@@ -370,7 +336,11 @@ func config_event_loop(wait_group *sync.WaitGroup) {
             user_id := args.UserId
 
             enabled_state := config_message.Action == "enable"
-            const query_string = "UPDATE auto_reply SET enabled = $1 WHERE user_id = $2 ;"
+
+            const query_string = `
+                INSERT INTO auto_reply (user_id, reply_text, enabled) VALUES ($2, '', $1)
+                ON CONFLICT (user_id) DO
+                UPDATE SET enabled = $1 ;`
 
             _, err = db.Exec(query_string, enabled_state, user_id)
         }
