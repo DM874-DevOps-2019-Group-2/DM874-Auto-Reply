@@ -5,8 +5,8 @@ import (
     "context"
     "fmt"
     "strings"
-    // "strconv" 
-    // "sync"
+    // "strconv"
+    "sync"
     "time"
     "os"
     "database/sql"
@@ -229,19 +229,82 @@ func encode_event_sourcing_struct(event_struct *EventSourcingStructure) []byte {
     return result
 }
 
-func main() {
+func get_db_connection() (*sql.DB, error) {
+    var db_host string = os.Getenv("DATABASE_HOST")
+    var db_port string = os.Getenv("DATABASE_PORT")
+    var db_user string = os.Getenv("DATABASE_USER")
+    var db_password string = os.Getenv("DATABASE_PASSWORD")
+    var db_name string = os.Getenv("DATABASE_NAME")
 
-    auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
-    auto_reply_producer_topic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
-    //auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_TOPIC")
+    psql_info := fmt.Sprintf(
+        "host=%s port=%s user=%s "+
+        "password=%s dbname=%s sslmode=disable",
+        db_host, db_port, db_user, db_password, db_name)
+
+    return sql.Open("postgres", psql_info)
+}
+
+func config_event_loop(wait_group *sync.WaitGroup) {
+    defer wait_group.Done()
+
+    auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_TOPIC")
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
-    db_host     := os.Getenv("DATABASE_HOST")
-    db_port     := os.Getenv("DATABASE_PORT")
-    db_user     := os.Getenv("DATABASE_USER")
-    db_password := os.Getenv("DATABASE_PASSWORD")
-    db_name     := os.Getenv("DATABASE_NAME")
+    db, err := get_db_connection()
+    if err != nil {
+        panic("Could not connect to database.\n")
+    }
+    defer db.Close()
+
+    config_reader := kafka.NewReader(kafka.ReaderConfig{
+        Brokers:     listedBrokers,
+        Topic:       auto_reply_config_topic,
+        Partition:   0,
+        MinBytes:    10, // 10B
+        MaxBytes:    10<<20, // 10MiB
+        MaxWait:     time.Millisecond * 100,
+        GroupID:     "auto_reply_group",
+        StartOffset: kafka.LastOffset,
+    })
+    defer func() {
+        fmt.Println("Closeing message_reader")
+        config_reader.Close()
+    }()
+    config_reader.SetOffset(kafka.LastOffset)
+
+
+    context := context.Background()
+
+    for {
+        message, err := config_reader.ReadMessage(context)
+        if err != nil {
+            fmt.Printf("[ERROR] %v\n", err) // :ERROR
+            return
+        }
+        fmt.Printf("config at topic/partition/offset %v/%v/%v: %s = %s\n",
+            message.Topic,
+            message.Partition,
+            message.Offset,
+            string(message.Key),
+            string(message.Value))
+    }
+}
+
+
+func chat_message_event_loop(wait_group *sync.WaitGroup) {
+    defer wait_group.Done()
+
+    auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
+    auto_reply_producer_topic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
+    kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+    listedBrokers := strings.Split(kafkaBrokers, ",")
+
+    db, err := get_db_connection()
+    if err != nil {
+        panic("Could not connect to database.\n")
+    }
+    defer db.Close()
 
     message_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
@@ -257,6 +320,13 @@ func main() {
         fmt.Println("Closeing message_reader")
         message_reader.Close()
     }()
+    message_reader.SetOffset(kafka.LastOffset)
+
+    fmt.Println(message_reader.Offset())
+    fmt.Println(message_reader.Offset()) // will always return -1 when GroupID is set
+    fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
+    fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
+    fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
 
     message_writer := kafka.NewWriter(kafka.WriterConfig{
         Brokers: listedBrokers,
@@ -267,68 +337,6 @@ func main() {
         fmt.Println("Closeing writer")
         message_writer.Close()
     }()
-
-    fmt.Println(message_reader.Offset())
-    message_reader.SetOffset(kafka.LastOffset)
-
-    fmt.Println(message_reader.Offset()) // will always return -1 when GroupID is set
-    fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
-    fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
-    fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
-
-
-    //*
-    
-    psql_info := fmt.Sprintf(
-        "host=%s port=%s user=%s "+
-        "password=%s dbname=%s sslmode=disable",
-        db_host, db_port, db_user, db_password, db_name)
-
-    fmt.Println("Trying to connect to postgres server:")
-    fmt.Println(psql_info)
-
-    db, err := sql.Open("postgres", psql_info)
-    if err != nil {
-        panic(err)
-    }
-    defer db.Close()
-    fmt.Println("Successfully connected!")
-    
-    err = db.Ping()
-    if err != nil {
-        panic(err)
-    }
-
-    //*/
-
-    // encoded_event_sourcing_struct := new(bytes.Buffer)
-    // json_encoder := json.NewEncoder(encoded_event_sourcing_struct)
-    // json_encoder.Encode(event_sourcing_struct)
-    
-    // fmt.Printf("%+v\n", encoded_event_sourcing_struct)
-
-
-
-    /*TEST
-    message_writer.WriteMessages(context.Background(),
-        kafka.Message{
-            //Key: []byte("message"),
-            Value: []byte(`{
-              "messageid": "UID",
-              "senderid": 12,
-              "messagedestinations": [
-                {
-                  "destinationid": 42,
-                  "message": "Hello world!",
-                  "fromautoreply": false
-                }
-              ],
-              "eventDestinations": {
-                "1": "TOPIC1",
-                "2": "TOPIC2"
-              }
-            }`)})
-    //*/
 
     context := context.Background()
 
@@ -369,6 +377,17 @@ func main() {
             message_writer.WriteMessages(context, kafka.Message{Value: bytes})
         }
     }
+}
 
-    //*/
+
+
+func main() {
+    var wait_group sync.WaitGroup
+
+    wait_group.Add(2)
+
+    go chat_message_event_loop(&wait_group)
+    go config_event_loop(&wait_group)
+
+    wait_group.Wait()
 }
