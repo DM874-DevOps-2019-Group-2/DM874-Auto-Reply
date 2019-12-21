@@ -26,6 +26,12 @@ spec:
         - name: auto-reply-container
           image: dm874/auto-reply:latest
           imagePullPolicy: Always
+          env:
+            - name: ROUTER_CONSUMER_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: router-config
+                  key: ROUTE_MESSAGE_TOPIC
           envFrom:
             - secretRef:
                 name: db-secrets

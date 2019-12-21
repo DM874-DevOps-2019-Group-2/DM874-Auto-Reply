@@ -55,18 +55,18 @@ func main() {
             Value: []byte(`
             {
                 "action": "enable",
-                "args": {"user_id": 42}
+                "args": {"userID": 42}
             }`)},
         kafka.Message{
             Value: []byte(`
             {
                 "action": "disable",
-                "args": {"user_id": 33}
+                "args": {"userID": 33}
             }`)},
         kafka.Message{
             Value: []byte(`
             {
-                "action": "text",
-                "args": {"user_id": 8, "text": "reply world"}
+                "action": "setBody",
+                "args": {"userID": 8, "messageBody": "reply world"}
             }`)})
 }
