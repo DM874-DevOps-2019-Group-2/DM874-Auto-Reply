@@ -250,32 +250,12 @@ func encode_event_sourcing_struct(event_struct *EventSourcingStructure) []byte {
     return result
 }
 
-func get_db_connection() (*sql.DB, error) {
-    var db_host string = os.Getenv("DATABASE_HOST")
-    var db_port string = os.Getenv("DATABASE_PORT")
-    var db_user string = os.Getenv("DATABASE_USER")
-    var db_password string = os.Getenv("DATABASE_PASSWORD")
-    const db_name = "auto_reply_db"
-
-    psql_info := fmt.Sprintf(
-        "host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-        db_host, db_port, db_user, db_password, db_name)
-
-    return sql.Open("postgres", psql_info)
-}
-
-func config_event_loop(wait_group *sync.WaitGroup) {
+func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
     defer wait_group.Done()
 
-    auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_TOPIC")
+    auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_CONSUMER_TOPIC")
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
-
-    db, err := get_db_connection()
-    if err != nil {
-        panic("Could not connect to database.\n")
-    }
-    defer db.Close()
 
     config_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
@@ -352,19 +332,12 @@ func config_event_loop(wait_group *sync.WaitGroup) {
 }
 
 
-func chat_message_event_loop(wait_group *sync.WaitGroup) {
+func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
     defer wait_group.Done()
 
     auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
-    auto_reply_producer_topic := os.Getenv("AUTO_REPLY_PRODUCER_TOPIC")
     kafkaBrokers := os.Getenv("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
-
-    db, err := get_db_connection()
-    if err != nil {
-        panic("Could not connect to database.\n")
-    }
-    defer db.Close()
 
     message_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
@@ -387,16 +360,6 @@ func chat_message_event_loop(wait_group *sync.WaitGroup) {
     fmt.Println(message_reader.Lag()) // will always return -1 when GroupID is set
     fmt.Println(message_reader.ReadLag(context.Background())) // will return an error when GroupID is set
     fmt.Println(message_reader.Stats()) // will return a partition of -1 when GroupID is set
-
-    message_writer := kafka.NewWriter(kafka.WriterConfig{
-        Brokers: listedBrokers,
-        Topic: auto_reply_producer_topic,
-        Balancer: &kafka.LeastBytes{},
-    })
-    defer func() {
-        fmt.Println("Closeing writer")
-        message_writer.Close()
-    }()
 
     context := context.Background()
 
@@ -434,20 +397,48 @@ func chat_message_event_loop(wait_group *sync.WaitGroup) {
             bytes := encode_event_sourcing_struct(new_event_struct)
             fmt.Println("outbound:", new_event_struct, bytes)
 
+            if len(new_event_struct.EventDestinations) <= 0 {
+                fmt.Fprintf(os.Stderr, "Missing event destination topic.\n")
+                continue
+            }
+
+            topic := new_event_struct.EventDestinations[0]
+
+            message_writer := kafka.NewWriter(kafka.WriterConfig{
+                Brokers: listedBrokers,
+                Topic: topic,
+                Balancer: &kafka.LeastBytes{},
+            })
+            defer message_writer.Close()
+
             message_writer.WriteMessages(context, kafka.Message{Value: bytes})
         }
     }
 }
 
-
-
 func main() {
-    var wait_group sync.WaitGroup
+    var db_host string = os.Getenv("DATABASE_HOST")
+    var db_port string = os.Getenv("DATABASE_PORT")
+    var db_user string = os.Getenv("POSTGRES_USER")
+    var db_password string = os.Getenv("POSTGRES_PASSWORD")
+    const db_name = "auto_reply_db"
 
+    psql_info := fmt.Sprintf(
+        "host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+        db_host, db_port, db_user, db_password, db_name)
+
+    db, err := sql.Open("postgres", psql_info)
+    if err != nil {
+        panic("Could not connect to database.\n")
+    }
+    defer db.Close()
+
+
+    var wait_group sync.WaitGroup
     wait_group.Add(2)
 
-    go chat_message_event_loop(&wait_group)
-    go config_event_loop(&wait_group)
+    go chat_message_event_loop(&wait_group, db)
+    go config_event_loop(&wait_group, db)
 
     wait_group.Wait()
 }

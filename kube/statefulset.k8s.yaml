@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: auto-reply
+spec:
+  replicas: 1
+  serviceName: "auto-reply"
+  selector:
+    matchLabels:
+      app: auto-reply
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: router
+    spec:
+      initContainers:
+        - name: migrations-container
+          image: dm875/auto-reply-migrations
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+              name: db-secrets
+      containers:
+        - name: auto-reply-container
+          image: dm874/auto-reply:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: db-secrets
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "1000m"

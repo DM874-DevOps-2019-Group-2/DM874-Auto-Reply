@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: 
+  name: auto-reply-config
+data: 
+  AUTO_REPLY_CONFIG_TOPIC: "auto_reply_config_consumer_topic"
+  AUTO_REPLY_CONSUMER_TOPIC: "auto_reply_consumer_topic"
