@@ -1,18 +1,12 @@
-FROM golang:1.13.5-alpine
+FROM golang:1.13.5-alpine as goBuild
 
-RUN apk add git make
+RUN mkdir /build/
+WORKDIR /build
+COPY go/* ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-s" -a -installsuffix cgo -o main
 
-#RUN adduser --disabled-password golang
-#USER golang
-#WORKDIR /home/golang/
+FROM alpine:latest
+COPY --from=goBuild /build/main ./main
 
-
-# COPY dependencies.txt /dependencies.txt
-COPY Makefile Makefile
-COPY dependencies.txt dependencies.txt
-
-RUN cat dependencies.txt | xargs -I @ go get @
-COPY main.go main.go
-RUN make
 
 CMD ["./main"]

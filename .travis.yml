@@ -1,0 +1,24 @@
+language: minimal
+services:
+- docker
+before_install:
+- docker pull dm874/deploy
+stages:
+- build-publish
+- deploy-migrations
+- deploy-app
+jobs:
+  include:
+  - stage: build-publish
+    script: docker build -t auto-reply . && sh deployment/publish_auto_reply.sh
+  - stage: build-publish
+    script: docker build -t migrations migrations/ && sh deployment/publish_migrations.sh
+  - stage: deploy-migrations
+    script: sh deployment/deploy_migrations.sh
+  - stage: deploy-app
+    script: sh deployment/deploy_auto_reply.sh
+env:
+  global:
+  - secure: Yx+mxJaVF2XkuseFqoB7ckAoDZGmbXGQzo/Q+z0mpSO3DqJfcFiqpS3V5HLtAOL8vQZBIQVByRMcYFbh/b/TFZoBw/u1bXjERP5Yhew/OSI3bfJC+r3UrJMDY0PzgGWj19scYhyAE+HoIkGDSMp7qnGOAgtqQtaWkUdKiC/zQf8rPgdkj5bRfIhS/a8wG7pSOk2XPOjn22v/AJheFftvVYcmSA6sZBvofljPkWBNqECCKa/v/yR+kUnoDc+bfYSg+d4qCT27Q+DxBbqlKeFu6kN2iP+ajqs7GwlWzy6E8NOrc8wOs0qqqrT5DnOHQXWjHYaqJ5UjLlvX/ZAynmOEOy8jvlxt8JHlXInVLKfja+oQ5e3tUAru+RUQM4W6kGeIivodXcwVJ7k6E7Y/SS7xNd4hWMjLCeTOrQUaLxgD7tfCWNEyNaJ3lGQ2rYY/4yzzNhNYu2tQi01o436mGna4kRa7zBy6fIQ4/h7X95bTosDYfO6uW/h7Byz41cRIsrzY7uEpLWFjJUMGOAWoNVdF40uM9N1vh1RYFnv+NjISkiahLcH5uQxqUsH8xhC35p80uTt9IueLtuNk2PSX5/wU1xl9V53SEDOYqcxAfpQft4HRIFMDDysCunL16hovSGLQNiA5idsRJBNnsj4210cGZI2a74EcuQyW2ti/MyP8otY=
+  - secure: gIvvTzTkkErEOr/IAtzPEGd4De8+bVS3RmxRF+DAAlVjA0fGcT5Ug5xzbRwM2cQ3T5Mq2S+wu1uoPcYjyHfhkRlvRzS1YkqEzk+tJ3dxKN4LRoyn3YVwZ5nfLCbrTWY3L+vARiXf6O19mgeMCEZOtzxN0QjnhUHonG3ZaDtFsubbP+al/EJnU0TtqjQXBbGudLiqP2pQNAJKphmGa8LB2Ix2jYqpyvNrzheBw4bHJVYFkCOjo7ynNjjsltsfCcuzeymXPUYgZIszALcRhFh1PnJ+8lWDgN+7smnKBnMXsF8zdTd08fZVs4MF4s6/bbVG6HbBcQclhEs+U+fIrbD31joV6yUkkvHiCa1AhBW1hMC+nhytkbnKYvd5o78fGQUcD2Vm0GiQ4RSLMFBFtoegSUWE8Frzguqamniu+3rbf3bJnVsd47kOAPaI2MxTuSIXSvw+l+wWMSoGkMTIzQ0togNNfdnXRxyZiz85vLgC9lQPtmKs/6TY/a8FlqcNasfEZDuns7opT6YoLYq7jptlaS8O12/Eo/vzciSpFIQF4mQaNCCZOOMXcq12SUmrlu5wD+zwVFGjjrXNbAdCzKxulo4Oux9nlO6LhhgpMzxYYKKbTeX0S1mndwrNaUcHWhl/dgblTYtHSihnly4PLPaU1cG4StiX3LMlmfzab4KCqY0=
+  - secure: pgz7I5YwwAs/um2HyiDm9aKdmp2Jqa8GIYskojSLVErGGeag7Kc74xolhAhoJZNNgueQo2D/jvSBwVCK2Kq3bdAzWBHlcMUaZIyX8mFneTD768yrA4Vy+70gily7Rf74BsFSgJZQz6Dw/BwzCP/GufzKGZ6J+tC7JjKxNYY6OytB+86obQJnYS7GvFO1PxUk+CdPTkmUMOyG08HTxkOdDk2Jakt6IAO7rKgnBBvcjTPyPEBXWkNMqbvtaLP8siAVB3g3AZ41wrsKYyT4jpSQ+N2/DO1tmqGg1KqkqUm5YKTPsS2A7Tnyikgzn916AjMB5i7j/c9mLCIG2kCc+KTsUFYI4m/+4tdJerFyCiW0W4L9kayrvkp0Wjw8leMy+a5VC4RroLEDHwDX+v/A5KROAVy9lY1DMHo5AuN93QPesGfR29FFO1R6NRtn5IiXVlD6W2TBTThu+pZwbl3+SxrqRfNNlQSQVLrBUyON8vGwfx1VXqgjDStvNcdirer6IAxhoxyKIdEbx5p0cFpS2yXlkJ9rxKCxn7dKkojXd16Y2gByYdwkHY3LmoGlu2gighCRaI4wtG60aOBgTf97L+I98CUjJ5AHdBfdVBL5WrYtpKcuwXDVPjVLCCLw6tylr0lKptjeH6pPhGazh9lqLTwE1zHlob8jCU6sq+pFEsTGFT8=
