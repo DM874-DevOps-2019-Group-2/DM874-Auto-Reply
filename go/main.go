@@ -38,12 +38,12 @@ type ConfigMessage struct {
 }
 
 type ConfigEnableArgs struct {
-    UserId int `json:"userID"`
+    UserId int `json:"userId"`
 }
 
 type ConfigTextArgs struct {
-    UserId int `json:"userID"`
-    Text string `json:"messageBody"`
+    UserId int `json:"userId"`
+    MessageBody string `json:"messageBody"`
 }
 
 func pop_first_event_destination(event_destinations *[]string) string {
@@ -98,7 +98,7 @@ func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
 
         result.Arguments = args
 
-    case "text":
+    case "setBody":
         var args ConfigTextArgs
         err = json_decoder.Decode(&args)
         result.Arguments = args
@@ -218,18 +218,18 @@ func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
         fmt.Println("ConfigMessage:", config_message)
 
         
-        if config_message.Action == "text" {
+        if config_message.Action == "setBody" {
 
             args := config_message.Arguments.(ConfigTextArgs)
             user_id := args.UserId
-            text := args.Text
+            message_body := args.MessageBody
 
             const query_string = `
                 INSERT INTO auto_reply (user_id, reply_text, enabled) VALUES ($2, $1, false)
                 ON CONFLICT (user_id) DO
                 UPDATE SET reply_text = $1 ;`
 
-            _, err = db.Exec(query_string, text, user_id)
+            _, err = db.Exec(query_string, message_body, user_id)
         } else {
 
             args := config_message.Arguments.(ConfigEnableArgs)
