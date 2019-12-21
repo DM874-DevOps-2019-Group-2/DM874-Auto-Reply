@@ -1,6 +1,6 @@
 # Auto Reply Service
 
-Provides users simple way of automatically replying with the same response to all incomming messages. All of its functionality can be replicated with the Jolie Execution Service; but that is better suited for more demanding automatic messages.
+Provides users a simple way of automatically replying with the same response to all incomming messages. All of its functionality can be replicated with the Jolie Execution Service; but that is better suited for dynamic automatic messages.
 
 ## Kafka topics
 
