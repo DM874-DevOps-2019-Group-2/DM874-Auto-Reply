@@ -46,6 +46,16 @@ type ConfigTextArgs struct {
     MessageBody string `json:"messageBody"`
 }
 
+func safe_get_env(environment_var string) string {
+    result := os.Getenv(environment_var)
+    
+    if len(result) <= 0 {
+        fmt.Fprintf(os.Stderr, "Empty environment variable '%s'!\n", environment_var)
+    }
+
+    return result
+}
+
 func pop_first_event_destination(event_destinations *[]string) string {
     
     head := (*event_destinations)[0]
@@ -173,8 +183,8 @@ func encode_event_sourcing_struct(event_struct *EventSourcingStructure) []byte {
 func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
     defer wait_group.Done()
 
-    auto_reply_config_topic := os.Getenv("AUTO_REPLY_CONFIG_CONSUMER_TOPIC")
-    kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+    auto_reply_config_topic := safe_get_env("AUTO_REPLY_CONFIG_CONSUMER_TOPIC")
+    kafkaBrokers := safe_get_env("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
     config_reader := kafka.NewReader(kafka.ReaderConfig{
@@ -255,11 +265,11 @@ func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
 func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
     defer wait_group.Done()
 
-    auto_reply_consumer_topic := os.Getenv("AUTO_REPLY_CONSUMER_TOPIC")
-    kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+    auto_reply_consumer_topic := safe_get_env("AUTO_REPLY_CONSUMER_TOPIC")
+    kafkaBrokers := safe_get_env("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
-    router_consumer_topic := os.Getenv("ROUTER_CONSUMER_TOPIC")
+    router_consumer_topic := safe_get_env("ROUTER_CONSUMER_TOPIC")
 
     message_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
@@ -400,10 +410,10 @@ func handle_chat_message_event(event_struct *EventSourcingStructure, db *sql.DB,
 }
 
 func main() {
-    var db_host string = os.Getenv("DATABASE_HOST")
-    var db_port string = os.Getenv("DATABASE_PORT")
-    var db_user string = os.Getenv("POSTGRES_USER")
-    var db_password string = os.Getenv("POSTGRES_PASSWORD")
+    var db_host string = safe_get_env("DATABASE_HOST")
+    var db_port string = safe_get_env("DATABASE_PORT")
+    var db_user string = safe_get_env("POSTGRES_USER")
+    var db_password string = safe_get_env("POSTGRES_PASSWORD")
     const db_name = "auto_reply_db"
 
     psql_info := fmt.Sprintf(
