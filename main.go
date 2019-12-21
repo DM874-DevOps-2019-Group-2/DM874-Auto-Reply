@@ -32,20 +32,19 @@ type EventSourcingStructure struct {
     EventDestinations []string
 }
 
-// type Message struct {
-//     DestinationId int
-//     MessageId string
-//     MessageText string
-// }
+type ConfigMessage struct {
+    Action string
+    Arguments interface{}
+}
 
-// type EventSourcingStructure struct {
-//     MessageId string
-//     SessionId string
-//     SenderId int
-//     FromAutoReply bool
-//     MessageDestinations []*Message
-//     EventDestinations map[string]string
-// }
+type ConfigEnableArgs struct {
+    UserId int `json:"user_id"`
+}
+
+type ConfigTextArgs struct {
+    UserId int `json:"user_id"`
+    Text string `json:"text"`
+}
 
 func pop_first_event_destination(event_destinations *[]string) string {
     
@@ -134,8 +133,66 @@ func handle_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generat
     
     return result
 }
-/*
-*/
+
+func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
+    var result *ConfigMessage = nil
+    var err error
+
+    type ParseConfigMessage struct {
+        Action *string `json:"action"`
+        Arguments *json.RawMessage `json:"args"`
+    }
+
+    json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
+    json_decoder.DisallowUnknownFields() // Force errors
+
+    var decoded ParseConfigMessage
+
+    err = json_decoder.Decode(&decoded)
+    if err != nil {
+        return nil, err
+    }
+
+    if (decoded.Action == nil) || (decoded.Arguments == nil) {
+        err = errors.New("A required key was not found.")
+        return nil, err
+    }
+
+    result = new(ConfigMessage)
+    result.Action = *decoded.Action
+
+    json_decoder = json.NewDecoder(bytes.NewReader(*decoded.Arguments))
+    json_decoder.DisallowUnknownFields() // Force errors
+
+    switch result.Action {
+
+    case "disable":
+        var args ConfigEnableArgs
+        err = json_decoder.Decode(&args)
+
+        result.Arguments = args
+
+    case "enable":
+        var args ConfigEnableArgs
+        err = json_decoder.Decode(&args)
+
+        result.Arguments = args
+
+    case "text":
+        var args ConfigTextArgs
+        err = json_decoder.Decode(&args)
+        result.Arguments = args
+
+    default:
+        err = errors.New("Unsupported configuration action.")
+    }
+
+    if err != nil {
+        return nil, err
+    }
+
+    return result, nil
+}
 
 func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, error) {
     var result *EventSourcingStructure = nil
@@ -277,17 +334,50 @@ func config_event_loop(wait_group *sync.WaitGroup) {
     context := context.Background()
 
     for {
-        message, err := config_reader.ReadMessage(context)
+        kafka_message, err := config_reader.ReadMessage(context)
         if err != nil {
             fmt.Printf("[ERROR] %v\n", err) // :ERROR
-            return
+            continue
         }
         fmt.Printf("config at topic/partition/offset %v/%v/%v: %s = %s\n",
-            message.Topic,
-            message.Partition,
-            message.Offset,
-            string(message.Key),
-            string(message.Value))
+            kafka_message.Topic,
+            kafka_message.Partition,
+            kafka_message.Offset,
+            string(kafka_message.Key),
+            string(kafka_message.Value))
+
+        config_message, err := parse_config_message(kafka_message.Value)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error during parsing of configuration message: %v\n", err) // :ERROR
+            continue
+        }
+
+        fmt.Println("ConfigMessage:", config_message)
+
+        
+        if config_message.Action == "text" {
+
+            args := config_message.Arguments.(ConfigTextArgs)
+            user_id := args.UserId
+            text := args.Text
+
+            const query_string = "UPDATE auto_reply SET reply_text = $1 WHERE user_id = $2 ;"
+
+            _, err = db.Exec(query_string, text, user_id)
+        } else {
+
+            args := config_message.Arguments.(ConfigEnableArgs)
+            user_id := args.UserId
+
+            enabled_state := config_message.Action == "enable"
+            const query_string = "UPDATE auto_reply SET enabled = $1 WHERE user_id = $2 ;"
+
+            _, err = db.Exec(query_string, enabled_state, user_id)
+        }
+
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error in database request: %v\n", err) // :ERROR
+        }
     }
 }
 
