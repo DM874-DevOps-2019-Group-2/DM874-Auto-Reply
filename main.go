@@ -34,7 +34,16 @@ type EventSourcingStructure struct {
 
 type ConfigMessage struct {
     Action string
-    Arguments *interface{}
+    Arguments interface{}
+}
+
+type ConfigEnableArgs struct {
+    UserId int `json:"user_id"`
+}
+
+type ConfigTextArgs struct {
+    UserId int `json:"user_id"`
+    Text string `json:"text"`
 }
 
 func pop_first_event_destination(event_destinations *[]string) string {
@@ -131,7 +140,7 @@ func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
 
     type ParseConfigMessage struct {
         Action *string `json:"action"`
-        Arguments map[string]*json.RawMessage `json:"payload`
+        Arguments *json.RawMessage `json:"args"`
     }
 
     json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
@@ -149,19 +158,38 @@ func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
         return nil, err
     }
 
-    // result = new(ConfigMessage)
-    // result.Action = *decoded.Action
+    result = new(ConfigMessage)
+    result.Action = *decoded.Action
 
-    // switch result.Action {
-    // case "set_enabled_state":
-    //     var args struct {
-    //         Enabled bool `json:"enabled"`
-    //     }
-    //     // result.Arguments = json.Unmarsharl(decoded.Arguments, &args)
-    // default:
-        
-    // }
+    json_decoder = json.NewDecoder(bytes.NewReader(*decoded.Arguments))
+    json_decoder.DisallowUnknownFields() // Force errors
 
+    switch result.Action {
+
+    case "disable":
+        var args ConfigEnableArgs
+        err = json_decoder.Decode(&args)
+
+        result.Arguments = args
+
+    case "enable":
+        var args ConfigEnableArgs
+        err = json_decoder.Decode(&args)
+
+        result.Arguments = args
+
+    case "text":
+        var args ConfigTextArgs
+        err = json_decoder.Decode(&args)
+        result.Arguments = args
+
+    default:
+        err = errors.New("Unsupported configuration action.")
+    }
+
+    if err != nil {
+        return nil, err
+    }
 
     return result, nil
 }
@@ -309,7 +337,7 @@ func config_event_loop(wait_group *sync.WaitGroup) {
         kafka_message, err := config_reader.ReadMessage(context)
         if err != nil {
             fmt.Printf("[ERROR] %v\n", err) // :ERROR
-            return
+            continue
         }
         fmt.Printf("config at topic/partition/offset %v/%v/%v: %s = %s\n",
             kafka_message.Topic,
@@ -321,9 +349,35 @@ func config_event_loop(wait_group *sync.WaitGroup) {
         config_message, err := parse_config_message(kafka_message.Value)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Error during parsing of configuration message: %v\n", err) // :ERROR
+            continue
         }
 
         fmt.Println("ConfigMessage:", config_message)
+
+        
+        if config_message.Action == "text" {
+
+            args := config_message.Arguments.(ConfigTextArgs)
+            user_id := args.UserId
+            text := args.Text
+
+            const query_string = "UPDATE auto_reply SET reply_text = $1 WHERE user_id = $2 ;"
+
+            _, err = db.Exec(query_string, text, user_id)
+        } else {
+
+            args := config_message.Arguments.(ConfigEnableArgs)
+            user_id := args.UserId
+
+            enabled_state := config_message.Action == "enable"
+            const query_string = "UPDATE auto_reply SET enabled = $1 WHERE user_id = $2 ;"
+
+            _, err = db.Exec(query_string, enabled_state, user_id)
+        }
+
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error in database request: %v\n", err) // :ERROR
+        }
     }
 }
 

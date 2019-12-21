@@ -70,7 +70,19 @@ func main() {
         kafka.Message{
             Value: []byte(`
             {
+                "action": "enable",
+                "args": {"user_id": 12}
+            }`)},
+        kafka.Message{
+            Value: []byte(`
+            {
                 "action": "disable",
-                "payload": {"user_id": 8}
+                "args": {"user_id": 8}
+            }`)},
+        kafka.Message{
+            Value: []byte(`
+            {
+                "action": "text",
+                "args": {"user_id": 8, "text": "reply world"}
             }`)})
 }
