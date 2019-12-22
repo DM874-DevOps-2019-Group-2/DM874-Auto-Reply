@@ -1,195 +1,42 @@
 package main
 
 import (
-    "errors"
+    msg "./messaging"
+
     "context"
     "fmt"
     "strings"
-    // "strconv"
     "sync"
     "time"
     "os"
     "database/sql"
-
-    // "reflect"
-
-    "encoding/json"
-    "bytes"
-    // "sort"
 
     "github.com/segmentio/kafka-go"
     _ "github.com/lib/pq"
     guuid "github.com/google/uuid"
 )
 
-type EventSourcingStructure struct {
-    MessageUid string `json:"messageUid"`
-    SessionUid string `json:"sessionUid"`
-    MessageBody string `json:"messageBody"`
-    SendingUserId int `json:"senderId"`
-    RecipientUserIds []int `json:"recipientIds"`
-    FromAutoReply bool `json:"fromAutoReply"`
-    EventDestinations []string `json:eventDestinations`
-}
-
-type ConfigMessage struct {
-    Action string
-    Arguments interface{}
-}
-
-type ConfigEnableArgs struct {
-    UserId int `json:"userId"`
-}
-
-type ConfigTextArgs struct {
-    UserId int `json:"userId"`
-    MessageBody string `json:"messageBody"`
-}
-
-func safe_get_env(environment_var string) string {
-    result := os.Getenv(environment_var)
+func getEnvOrWarn(environmentVar string) string {
+    result := os.Getenv(environmentVar)
     
     if len(result) <= 0 {
-        fmt.Fprintf(os.Stderr, "Empty environment variable '%s'!\n", environment_var)
+        fmt.Fprintf(os.Stderr, "Empty environment variable '%s'!\n", environmentVar)
     }
 
     return result
 }
 
-func pop_first_event_destination(event_destinations *[]string) string {
-    
-    head := (*event_destinations)[0]
-    (*event_destinations) = (*event_destinations)[1:]
 
-    return head
-}
+func configEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
+    defer waitGroup.Done()
 
-func parse_config_message(json_bytes []byte) (*ConfigMessage, error) {
-    var result *ConfigMessage = nil
-    var err error
-
-    type ParseConfigMessage struct {
-        Action *string `json:"action"`
-        Arguments *json.RawMessage `json:"args"`
-    }
-
-    json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
-    json_decoder.DisallowUnknownFields() // Force errors
-
-    var decoded ParseConfigMessage
-
-    err = json_decoder.Decode(&decoded)
-    if err != nil {
-        return nil, err
-    }
-
-    if (decoded.Action == nil) || (decoded.Arguments == nil) {
-        err = errors.New("A required key was not found.")
-        return nil, err
-    }
-
-    result = new(ConfigMessage)
-    result.Action = *decoded.Action
-
-    json_decoder = json.NewDecoder(bytes.NewReader(*decoded.Arguments))
-    json_decoder.DisallowUnknownFields() // Force errors
-
-    switch result.Action {
-
-    case "disable":
-        var args ConfigEnableArgs
-        err = json_decoder.Decode(&args)
-
-        result.Arguments = args
-
-    case "enable":
-        var args ConfigEnableArgs
-        err = json_decoder.Decode(&args)
-
-        result.Arguments = args
-
-    case "setBody":
-        var args ConfigTextArgs
-        err = json_decoder.Decode(&args)
-        result.Arguments = args
-
-    default:
-        err = errors.New("Unsupported configuration action.")
-    }
-
-    if err != nil {
-        return nil, err
-    }
-
-    return result, nil
-}
-
-func parse_event_sourcing_struct(json_bytes []byte) (*EventSourcingStructure, error) {
-    var result *EventSourcingStructure = nil
-    var err error
-
-    type ParseEventSourceStruct struct {
-        MessageUid *string `json:"messageUid"`
-        SessionUid *string `json:"sessionUid"`
-        MessageBody *string `json:"messageBody"`
-        SendingUserId *int `json:"senderId"`
-        RecipientUserIds *[]int `json:"recipientIds"`
-        FromAutoReply *bool `json:"fromAutoReply"`
-        EventDestinations *[]string `json:eventDestinations`
-    }
-
-    json_decoder := json.NewDecoder(bytes.NewReader(json_bytes))
-    json_decoder.DisallowUnknownFields() // Force errors
-
-    var decoded ParseEventSourceStruct
-
-    err = json_decoder.Decode(&decoded)
-    if err != nil {
-        return nil, err
-    }
-
-    if ((decoded.MessageUid == nil) ||
-    (decoded.SessionUid == nil) ||
-    (decoded.MessageBody == nil) ||
-    (decoded.SendingUserId == nil) ||
-    (decoded.RecipientUserIds == nil) ||
-    (decoded.FromAutoReply == nil) ||
-    (decoded.EventDestinations == nil)) {
-        err = errors.New("A required key was not found.")
-        return nil, err
-    }
-
-    result = new(EventSourcingStructure)
-    result.MessageUid = *decoded.MessageUid
-    result.SessionUid = *decoded.SessionUid
-    result.MessageBody = *decoded.MessageBody
-    result.SendingUserId = *decoded.SendingUserId
-    result.RecipientUserIds = *decoded.RecipientUserIds
-    result.FromAutoReply = *decoded.FromAutoReply
-    result.EventDestinations = *decoded.EventDestinations
-
-    return result, nil
-}
-
-func encode_event_sourcing_struct(event_struct *EventSourcingStructure) []byte {
-
-    result, err := json.Marshal(*event_struct)
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "During json encoding: %v\n", err)
-    }
-    return result
-}
-
-func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
-    defer wait_group.Done()
-
-    auto_reply_config_topic := safe_get_env("AUTO_REPLY_CONFIG_CONSUMER_TOPIC")
-    kafkaBrokers := safe_get_env("KAFKA_BROKERS")
+    autoReplyConfigTopic := getEnvOrWarn("AUTO_REPLY_CONFIG_CONSUMER_TOPIC")
+    kafkaBrokers := getEnvOrWarn("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
-    config_reader := kafka.NewReader(kafka.ReaderConfig{
+    configReader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
-        Topic:       auto_reply_config_topic,
+        Topic:       autoReplyConfigTopic,
         Partition:   0,
         MinBytes:    10, // 10B
         MaxBytes:    10<<20, // 10MiB
@@ -198,61 +45,61 @@ func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
         StartOffset: kafka.LastOffset,
     })
     defer func() {
-        fmt.Println("Closeing message_reader")
-        config_reader.Close()
+        fmt.Println("Closing messageReader")
+        configReader.Close()
     }()
-    config_reader.SetOffset(kafka.LastOffset)
+    configReader.SetOffset(kafka.LastOffset)
 
 
     context := context.Background()
 
     for {
-        kafka_message, err := config_reader.ReadMessage(context)
+        kafkaMessage, err := configReader.ReadMessage(context)
         if err != nil {
             fmt.Printf("[ERROR] %v\n", err) // :ERROR
             continue
         }
         fmt.Printf("config at topic/partition/offset %v/%v/%v: %s = %s\n",
-            kafka_message.Topic,
-            kafka_message.Partition,
-            kafka_message.Offset,
-            string(kafka_message.Key),
-            string(kafka_message.Value))
+            kafkaMessage.Topic,
+            kafkaMessage.Partition,
+            kafkaMessage.Offset,
+            string(kafkaMessage.Key),
+            string(kafkaMessage.Value))
 
-        config_message, err := parse_config_message(kafka_message.Value)
+        configMessage, err := msg.ParseConfigMessage(kafkaMessage.Value)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Error during parsing of configuration message: %v\n", err) // :ERROR
             continue
         }
 
-        fmt.Println("ConfigMessage:", config_message)
+        fmt.Println("ConfigMessage:", configMessage)
 
         
-        if config_message.Action == "setBody" {
+        if configMessage.Action == "setBody" {
 
-            args := config_message.Arguments.(ConfigTextArgs)
-            user_id := args.UserId
-            message_body := args.MessageBody
+            args := configMessage.Arguments.(msg.ConfigTextArgs)
+            userID := args.UserId
+            messageBody := args.MessageBody
 
-            const query_string = `
+            const queryString = `
                 INSERT INTO auto_reply (user_id, reply_text, enabled) VALUES ($2, $1, false)
                 ON CONFLICT (user_id) DO
                 UPDATE SET reply_text = $1 ;`
 
-            _, err = db.Exec(query_string, message_body, user_id)
+            _, err = db.Exec(queryString, messageBody, userID)
         } else {
 
-            args := config_message.Arguments.(ConfigEnableArgs)
-            user_id := args.UserId
+            args := configMessage.Arguments.(msg.ConfigEnableArgs)
+            userID := args.UserId
 
-            enabled_state := config_message.Action == "enable"
+            enabledState := configMessage.Action == "enable"
 
-            const query_string = `
+            const queryString = `
                 INSERT INTO auto_reply (user_id, reply_text, enabled) VALUES ($2, '', $1)
                 ON CONFLICT (user_id) DO
                 UPDATE SET enabled = $1 ;`
 
-            _, err = db.Exec(query_string, enabled_state, user_id)
+            _, err = db.Exec(queryString, enabledState, userID)
         }
 
         if err != nil {
@@ -262,18 +109,18 @@ func config_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
 }
 
 
-func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
-    defer wait_group.Done()
+func chatMessageEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
+    defer waitGroup.Done()
 
-    auto_reply_consumer_topic := safe_get_env("AUTO_REPLY_CONSUMER_TOPIC")
-    kafkaBrokers := safe_get_env("KAFKA_BROKERS")
+    autoReplyConsumerTopic := getEnvOrWarn("AUTO_REPLY_CONSUMER_TOPIC")
+    kafkaBrokers := getEnvOrWarn("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
-    router_consumer_topic := safe_get_env("ROUTE_MESSAGE_TOPIC")
+    routerConsumerTopic := getEnvOrWarn("ROUTE_MESSAGE_TOPIC")
 
-    message_reader := kafka.NewReader(kafka.ReaderConfig{
+    messageReader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
-        Topic:       auto_reply_consumer_topic,
+        Topic:       autoReplyConsumerTopic,
         Partition:   0,
         MinBytes:    10, // 10B
         MaxBytes:    10<<20, // 10MiB
@@ -282,17 +129,17 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
         StartOffset: kafka.LastOffset,
     })
     defer func() {
-        fmt.Println("Closeing message_reader")
-        message_reader.Close()
+        fmt.Println("Closing messageReader")
+        messageReader.Close()
     }()
-    message_reader.SetOffset(kafka.LastOffset)
+    messageReader.SetOffset(kafka.LastOffset)
 
     context := context.Background()
 
-    uuid_generator := guuid.New()
+    uuidGenerator := guuid.New()
 
     for {
-        message, err := message_reader.ReadMessage(context)
+        message, err := messageReader.ReadMessage(context)
         if err != nil {
             fmt.Printf("[ERROR] %v\n", err) // :ERROR
             return
@@ -304,81 +151,86 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
             string(message.Key),
             string(message.Value))
 
-        event_sourcing_struct, err := parse_event_sourcing_struct(message.Value)
+        eventSourcingStruct, err := msg.ParseEventSourcingStruct(message.Value)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Error during parsing of event sourcing struct: %v\n", err) // :ERROR
         }
 
-        fmt.Println(event_sourcing_struct)
+        fmt.Println(eventSourcingStruct)
 
-        fmt.Println(event_sourcing_struct.EventDestinations)
-        first_destination := pop_first_event_destination(&event_sourcing_struct.EventDestinations)
-        fmt.Println(first_destination)
-        fmt.Println(event_sourcing_struct.EventDestinations)
+        fmt.Println(eventSourcingStruct.EventDestinations)
+        firstDestination := msg.PopFirstEventDestination(&eventSourcingStruct.EventDestinations)
+        fmt.Println(firstDestination)
+        fmt.Println(eventSourcingStruct.EventDestinations)
 
-        new_event_sourcing_structs := handle_chat_message_event(event_sourcing_struct, db, uuid_generator, router_consumer_topic)
+        newEventSourcingStructs := handleChatMessageEvent(eventSourcingStruct, db, uuidGenerator, routerConsumerTopic)
 
-        for _, new_event_struct := range new_event_sourcing_structs {
+        for _, newEventStruct := range newEventSourcingStructs {
 
-            bytes := encode_event_sourcing_struct(new_event_struct)
-            fmt.Println("outbound:", new_event_struct, bytes)
+            bytes := msg.EncodeEventSourcingStruct(newEventStruct)
+            fmt.Println("outbound:", newEventStruct, bytes)
 
-            if len(new_event_struct.EventDestinations) <= 0 {
+            if len(newEventStruct.EventDestinations) <= 0 {
                 fmt.Fprintf(os.Stderr, "Missing event destination topic.\n")
                 continue
             }
 
-            topic := new_event_struct.EventDestinations[0]
+            topic := newEventStruct.EventDestinations[0]
 
             if (len(topic) <= 0) {
                 fmt.Fprintf(os.Stderr, "Zero length event destination topic.\n")
                 continue
             }
             
-            message_writer := kafka.NewWriter(kafka.WriterConfig{
+            messageWriter := kafka.NewWriter(kafka.WriterConfig{
                 Brokers: listedBrokers,
                 Topic: topic,
                 Balancer: &kafka.LeastBytes{},
             })
-            defer message_writer.Close()
+            defer messageWriter.Close()
 
-            message_writer.WriteMessages(context, kafka.Message{Value: bytes})
+            messageWriter.WriteMessages(context, kafka.Message{Value: bytes})
         }
     }
 
 }
 
-func handle_chat_message_event(event_struct *EventSourcingStructure, db *sql.DB, uuid_generator guuid.UUID, router_consumer_topic string) []*EventSourcingStructure {
+func handleChatMessageEvent(
+    eventStruct *msg.EventSourcingStructure,
+    db *sql.DB, 
+    uuidGenerator guuid.UUID,
+    routerConsumerTopic string,
+) []*msg.EventSourcingStructure {
 
-    result := make([]*EventSourcingStructure, 0)
-    result = append(result, event_struct)
+    result := make([]*msg.EventSourcingStructure, 0)
+    result = append(result, eventStruct)
 
-    if event_struct.FromAutoReply {
+    if eventStruct.FromAutoReply {
         return result
     }
 
-    sender_id := event_struct.SendingUserId
+    senderID := eventStruct.SendingUserId
     
-    query_string := "SELECT reply_text, enabled FROM auto_reply WHERE user_id=$1 ;"
+    queryString := "SELECT reply_text, enabled FROM auto_reply WHERE user_id=$1 ;"
 
-    for _, receiving_user_id := range event_struct.RecipientUserIds {
+    for _, receivingUserID := range eventStruct.RecipientUserIds {
 
-        rows, err := db.Query(query_string, receiving_user_id)
+        rows, err := db.Query(queryString, receivingUserID)
         if err != nil {
             fmt.Printf("[ERROR]: %v\n", err) // :ERROR
-            fmt.Printf("EventSourcingStructure: %+v\n", event_struct)
+            fmt.Printf("EventSourcingStructure: %+v\n", eventStruct)
         }
 
         fmt.Println("rows: ", rows)
 
         if rows == nil {
-            fmt.Printf("[ERROR]: No user by ID %d.\n", receiving_user_id) // :ERROR
+            fmt.Printf("[ERROR]: No user by ID %d.\n", receivingUserID) // :ERROR
             return nil
         }
         defer rows.Close()
 
         type ResultRow struct {
-            reply_text string
+            replyText string
             enabled bool
         }
 
@@ -386,22 +238,22 @@ func handle_chat_message_event(event_struct *EventSourcingStructure, db *sql.DB,
 
         for rows.Next() {
             var row ResultRow
-            rows.Scan(&row.reply_text, &row.enabled)
+            rows.Scan(&row.replyText, &row.enabled)
             fmt.Println(row)
 
             if row.enabled {
-                new_event_struct := new(EventSourcingStructure)
+                newEventStruct := new(msg.EventSourcingStructure)
 
-                *new_event_struct = EventSourcingStructure {
-                    MessageUid: uuid_generator.String(),
-                    SessionUid: event_struct.SessionUid,
-                    MessageBody: row.reply_text,
-                    SendingUserId: receiving_user_id,
-                    RecipientUserIds: []int{sender_id},
+                *newEventStruct = msg.EventSourcingStructure {
+                    MessageUid: uuidGenerator.String(),
+                    SessionUid: eventStruct.SessionUid,
+                    MessageBody: row.replyText,
+                    SendingUserId: receivingUserID,
+                    RecipientUserIds: []int{senderID},
                     FromAutoReply: true,
-                    EventDestinations: []string{router_consumer_topic},
+                    EventDestinations: []string{routerConsumerTopic},
                 }
-                result = append(result, new_event_struct)
+                result = append(result, newEventStruct)
             }
         }
     }
@@ -410,28 +262,29 @@ func handle_chat_message_event(event_struct *EventSourcingStructure, db *sql.DB,
 }
 
 func main() {
-    var db_host string = safe_get_env("DATABASE_HOST")
-    var db_port string = safe_get_env("DATABASE_PORT")
-    var db_user string = safe_get_env("POSTGRES_USER")
-    var db_password string = safe_get_env("POSTGRES_PASSWORD")
-    const db_name = "auto_reply_db"
 
-    psql_info := fmt.Sprintf(
+    var dbHost string = getEnvOrWarn("DATABASE_HOST")
+    var dbPort string = getEnvOrWarn("DATABASE_PORT")
+    var dbUser string = getEnvOrWarn("POSTGRES_USER")
+    var dbPassword string = getEnvOrWarn("POSTGRES_PASSWORD")
+    const dbName = "auto_reply_db"
+
+    psqlInfo := fmt.Sprintf(
         "host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-        db_host, db_port, db_user, db_password, db_name)
+        dbHost, dbPort, dbUser, dbPassword, dbName)
 
-    db, err := sql.Open("postgres", psql_info)
+    db, err := sql.Open("postgres", psqlInfo)
     if err != nil {
         panic("Could not connect to database.\n")
     }
     defer db.Close()
 
 
-    var wait_group sync.WaitGroup
-    wait_group.Add(2)
+    var waitGroup sync.WaitGroup
+    waitGroup.Add(2)
 
-    go chat_message_event_loop(&wait_group, db)
-    go config_event_loop(&wait_group, db)
+    go chatMessageEventLoop(&waitGroup, db)
+    go configEventLoop(&waitGroup, db)
 
-    wait_group.Wait()
+    waitGroup.Wait()
 }

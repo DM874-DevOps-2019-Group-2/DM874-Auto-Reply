@@ -1,7 +1,7 @@
 .PHONY: test
 
-main: main.go
-	go build main.go
+main: go/main.go
+	go run go/main.go
 
 clean:
 	main

@@ -26,6 +26,7 @@ func main() {
         chat_message_writer.Close()
     }()
 
+
     chat_message_writer.WriteMessages(context.Background(),
         kafka.Message{
             //Key: []byte("message"),
@@ -46,6 +47,7 @@ func main() {
         Balancer: &kafka.LeastBytes{},
     })
     defer func() {
+    fmt.Println("heelo")
         fmt.Println("Closeing config_writer")
         config_writer.Close()
     }()
