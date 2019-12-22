@@ -33,8 +33,6 @@ type ConfigTextArgs struct {
     MessageBody string `json:"messageBody"`
 }
 
-var errorMissingRequiredKey = errors.New("A required key was not found.")
-
 func ParseEventSourcingStruct(jsonBytes []byte) (*EventSourcingStructure, error) {
     var result *EventSourcingStructure = nil
     var err error
@@ -65,8 +63,9 @@ func ParseEventSourcingStruct(jsonBytes []byte) (*EventSourcingStructure, error)
     (decoded.SendingUserId == nil) ||
     (decoded.RecipientUserIds == nil) ||
     (decoded.FromAutoReply == nil) ||
-    (decoded.EventDestinations == nil)) {
-        err = errorMissingRequiredKey
+    (decoded.EventDestinations == nil) ||
+    len(*decoded.EventDestinations) <= 0 ) {
+        err = errors.New("A required key was not found or empty.")
         return nil, err
     }
 

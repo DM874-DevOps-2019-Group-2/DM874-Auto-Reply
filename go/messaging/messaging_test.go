@@ -37,6 +37,30 @@ func Test_ParseEventSourcingStruct(t *testing.T) {
             expectedError: false,
         },
         {
+            input: []byte(`{
+                "messageUid": "HEJSA",
+                "sessionUid": "DAVS",
+                "messageBody": "this is a body",
+                "senderId": 1124,
+                "recipientIds": [88, 1245, 51],
+                "fromAutoReply": false,
+                "eventDestinations": []
+            }`),
+            expectedError: true,
+        },
+        {
+            input: []byte(`{
+                "messageUid": 1,
+                "sessionUid": 1,
+                "messageBody": 1,
+                "senderId": 1,
+                "recipientIds": 1
+                "fromAutoReply": 1,
+                "eventDestinations": 1
+            }`),
+            expectedError: true,
+        },
+        {
             input: []byte(`{}`),
             expectedError: true,
         },
