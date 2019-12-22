@@ -269,7 +269,7 @@ func chat_message_event_loop(wait_group *sync.WaitGroup, db *sql.DB) {
     kafkaBrokers := safe_get_env("KAFKA_BROKERS")
     listedBrokers := strings.Split(kafkaBrokers, ",")
 
-    router_consumer_topic := safe_get_env("ROUTER_CONSUMER_TOPIC")
+    router_consumer_topic := safe_get_env("ROUTE_MESSAGE_TOPIC")
 
     message_reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:     listedBrokers,
