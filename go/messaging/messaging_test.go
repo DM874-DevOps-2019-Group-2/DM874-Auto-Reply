@@ -12,7 +12,6 @@ func Test_ParseEventSourcingStruct(t *testing.T) {
 		input []byte
 		expectedResult EventSourcingStructure
         expectedError bool
-		expectedErrorInstance error
 	}
 
     testCases := []TestCase {
@@ -40,7 +39,6 @@ func Test_ParseEventSourcingStruct(t *testing.T) {
         {
             input: []byte(`{}`),
             expectedError: true,
-            expectedErrorInstance: errorMissingRequiredKey,
         },
     }
 
@@ -56,10 +54,6 @@ func Test_ParseEventSourcingStruct(t *testing.T) {
             if !reflect.DeepEqual(c.expectedResult, *resultStruct) {
                 t.Errorf("ParseEventSourcingStruct: Expected result, %v but got %v.\n", c.expectedResult, *resultStruct)
             }
-        }
-
-        if c.expectedErrorInstance != err {
-            t.Errorf("ParseEventSourcingStruct: Expected error, %v but got %v.\n", c.expectedErrorInstance, err)
         }
 
     }
