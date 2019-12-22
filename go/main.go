@@ -159,7 +159,10 @@ func chatMessageEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
         fmt.Println(eventSourcingStruct)
 
         fmt.Println(eventSourcingStruct.EventDestinations)
-        firstDestination := msg.PopFirstEventDestination(&eventSourcingStruct.EventDestinations)
+        firstDestination, err := msg.PopFirstEventDestination(&eventSourcingStruct.EventDestinations)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error during parsing of event sourcing struct: %v\n", err) // :ERROR
+        }
         fmt.Println(firstDestination)
         fmt.Println(eventSourcingStruct.EventDestinations)
 

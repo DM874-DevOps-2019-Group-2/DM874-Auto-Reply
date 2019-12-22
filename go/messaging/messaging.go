@@ -83,12 +83,16 @@ func ParseEventSourcingStruct(jsonBytes []byte) (*EventSourcingStructure, error)
 
 
 
-func PopFirstEventDestination(event_destinations *[]string) string {
-    
-    head := (*event_destinations)[0]
-    (*event_destinations) = (*event_destinations)[1:]
+func PopFirstEventDestination(eventDestinations *[]string) (string, error) {
 
-    return head
+    if len(*eventDestinations) <= 0 {
+        return "", errors.New("Got an empty list of event sourcing destinations. There must be a least one.")
+    }
+    
+    head := (*eventDestinations)[0]
+    (*eventDestinations) = (*eventDestinations)[1:]
+
+    return head, nil
 }
 
 
