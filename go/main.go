@@ -1,7 +1,7 @@
 package main
 
 import (
-    msg "./messaging"
+    "DM874-Auto-Reply/messaging"
 
     "context"
     "fmt"
@@ -66,7 +66,7 @@ func configEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
             string(kafkaMessage.Key),
             string(kafkaMessage.Value))
 
-        configMessage, err := msg.ParseConfigMessage(kafkaMessage.Value)
+        configMessage, err := messaging.ParseConfigMessage(kafkaMessage.Value)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Error during parsing of configuration message: %v\n", err) // :ERROR
             continue
@@ -77,7 +77,7 @@ func configEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
         
         if configMessage.Action == "setBody" {
 
-            args := configMessage.Arguments.(msg.ConfigTextArgs)
+            args := configMessage.Arguments.(messaging.ConfigTextArgs)
             userID := args.UserId
             messageBody := args.MessageBody
 
@@ -89,7 +89,7 @@ func configEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
             _, err = db.Exec(queryString, messageBody, userID)
         } else {
 
-            args := configMessage.Arguments.(msg.ConfigEnableArgs)
+            args := configMessage.Arguments.(messaging.ConfigEnableArgs)
             userID := args.UserId
 
             enabledState := configMessage.Action == "enable"
@@ -151,7 +151,7 @@ func chatMessageEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
             string(message.Key),
             string(message.Value))
 
-        eventSourcingStruct, err := msg.ParseEventSourcingStruct(message.Value)
+        eventSourcingStruct, err := messaging.ParseEventSourcingStruct(message.Value)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Error during parsing of event sourcing struct: %v\n", err) // :ERROR
         }
@@ -159,7 +159,7 @@ func chatMessageEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
         fmt.Println(eventSourcingStruct)
 
         fmt.Println(eventSourcingStruct.EventDestinations)
-        firstDestination, err := msg.PopFirstEventDestination(&eventSourcingStruct.EventDestinations)
+        firstDestination, err := messaging.PopFirstEventDestination(&eventSourcingStruct.EventDestinations)
         if err != nil {
             fmt.Fprintf(os.Stderr, "Error during parsing of event sourcing struct: %v\n", err) // :ERROR
         }
@@ -170,7 +170,7 @@ func chatMessageEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
 
         for _, newEventStruct := range newEventSourcingStructs {
 
-            bytes := msg.EncodeEventSourcingStruct(newEventStruct)
+            bytes := messaging.EncodeEventSourcingStruct(newEventStruct)
             fmt.Println("outbound:", newEventStruct, bytes)
 
             if len(newEventStruct.EventDestinations) <= 0 {
@@ -199,13 +199,13 @@ func chatMessageEventLoop(waitGroup *sync.WaitGroup, db *sql.DB) {
 }
 
 func handleChatMessageEvent(
-    eventStruct *msg.EventSourcingStructure,
+    eventStruct *messaging.EventSourcingStructure,
     db *sql.DB, 
     uuidGenerator guuid.UUID,
     routerConsumerTopic string,
-) []*msg.EventSourcingStructure {
+) []*messaging.EventSourcingStructure {
 
-    result := make([]*msg.EventSourcingStructure, 0)
+    result := make([]*messaging.EventSourcingStructure, 0)
     result = append(result, eventStruct)
 
     if eventStruct.FromAutoReply {
@@ -245,9 +245,9 @@ func handleChatMessageEvent(
             fmt.Println(row)
 
             if row.enabled {
-                newEventStruct := new(msg.EventSourcingStructure)
+                newEventStruct := new(messaging.EventSourcingStructure)
 
-                *newEventStruct = msg.EventSourcingStructure {
+                *newEventStruct = messaging.EventSourcingStructure {
                     MessageUid: uuidGenerator.String(),
                     SessionUid: eventStruct.SessionUid,
                     MessageBody: row.replyText,

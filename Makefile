@@ -1,7 +1,7 @@
 .PHONY: test
 
-main: go/main.go
-	go run go/main.go
+all:
+	docker build -t auto-reply .
 
 clean:
 	main

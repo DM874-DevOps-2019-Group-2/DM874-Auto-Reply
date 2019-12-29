@@ -9,4 +9,4 @@ export DATABASE_PORT=5432
 export POSTGRES_USER=postgres
 export POSTGRES_PASSWORD=password
  
-go run $1
+
