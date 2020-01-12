@@ -26,21 +26,19 @@ spec:
         - name: auto-reply-container
           image: dm874/auto-reply:latest
           imagePullPolicy: Always
-          env:
-            - name: ROUTE_MESSAGE_TOPIC
-                valueFrom:
-                  configMapKeyRef:
-                    name: router-config
-                    key: ROUTE_MESSAGE_TOPIC
           envFrom:
             - secretRef:
                 name: db-secrets
-            # - configMapRef:
-            #     name: router-config
             - configMapRef:
                 name: auto-reply-config
             - configMapRef:
                 name: kafka-connection-config
+          env:
+            - name: ROUTE_MESSAGE_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: router-config
+                  key: ROUTE_MESSAGE_TOPIC
           resources:
             requests:
               memory: "500Mi"
